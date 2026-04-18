@@ -221,17 +221,64 @@ result.dashboard_plan = validator.validate(
 
 ---
 
+## Debug Mode
+
+`--debug` flag added to CLI. When active, each pipeline step prints its full output to stdout immediately after completion.
+
+```bash
+python main.py --input employees_rh.xlsx --debug
+```
+
+**Output per step:**
+
+```text
+[DEBUG Agent 1 — DataAnalyzer]
+<DataProfile JSON>
+
+[DEBUG Agent 2 — DomainClassifier]
+<ClassificationResult JSON>
+
+[DEBUG Agent 3 — InsightExtractor]
+<InsightReport JSON>
+
+[DEBUG Agent 3.5 — FeatureEngineer]
+<FeaturePlan JSON>
+
+[DEBUG Agent 4 — DashboardComposer]
+<DashboardPlan JSON (pre-validation)>
+
+[DEBUG Agent 4.5 — ReflexionValidator]
+Dropped sections: [...]
+Surviving plan: <DashboardPlan JSON>
+
+[DEBUG GristImporter]
+doc_id: <id>
+Tables created: [...]
+
+[DEBUG FeatureEngineer.apply]
+Columns applied: [...]
+Columns failed: [...]
+
+[DEBUG ArchetypeEngine]
+Pages created: [...]
+```
+
+**Implementation:** `Settings.debug: bool = False` reads from `--debug` flag and env var `DEBUG=true`. Each agent/step receives `debug: bool` and calls a shared `debug_print(label, data)` helper that pretty-prints JSON. No logging framework changes — stdout only, human-readable.
+
+---
+
 ## Files Changed / Created
 
 | File | Change |
 |---|---|
 | `core/feature_engineer.py` | NEW — FeatureEngineer agent + FeaturePlan schema |
 | `core/reflexion.py` | NEW — ReflexionValidator |
-| `core/pipeline.py` | Add feature_plan to PipelineResult; wire Agent 3.5 + 4.5 |
+| `core/pipeline.py` | Add feature_plan to PipelineResult; wire Agent 3.5 + 4.5; debug output |
 | `core/dashboard_composer.py` | Update prompt to include engineered col_ids |
 | `archetypes/base.py` | Fix `_add_chart_section` — options + agg per field |
 | `archetypes/generic.py` | Pass `section.agg` to `_add_chart_section` |
-| `main.py` | Call `FeatureEngineer.apply()` after GristImporter |
+| `main.py` | `--debug` flag; call `FeatureEngineer.apply()` after GristImporter |
+| `config.py` | Add `DEBUG: bool = False` setting |
 
 ---
 
