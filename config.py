@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     API_RETRIES: int = 3
 
     # Grist API configuration
-    GRIST_API_KEY: str = "c0136d94dbe8609d510f08bdea390694cd45ff50"
+    GRIST_API_KEY: str = ""
     GRIST_SERVER: str = "http://localhost:8484"
     GRIST_DOC_ID: str = ""
 

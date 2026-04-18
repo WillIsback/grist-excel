@@ -9,13 +9,15 @@ Outputs: ClassificationResult (archetype, confidence, table_mapping, params)
 from __future__ import annotations
 
 import json
+import logging
 import requests
-from typing import Any
-from pydantic import BaseModel, Field, field_validator
+from typing import Any, Literal
+from pydantic import BaseModel, Field
 
 from config import Settings
 from core.data_analyzer import DataProfile
 
+logger = logging.getLogger(__name__)
 
 ARCHETYPE_CHOICES = [
     "HR",
@@ -27,11 +29,13 @@ ARCHETYPE_CHOICES = [
     "GENERIC",
 ]
 
+ArchetypeLiteral = Literal["HR", "DECISIONNEL", "SUPPORT", "STUDENT", "SI", "PROJECT", "GENERIC"]
+
 
 class ClassificationResult(BaseModel):
     """Output schema for the Domain Classifier agent."""
 
-    archetype: str = Field(
+    archetype: ArchetypeLiteral = Field(
         description="Business domain archetype. Must be one of: " + ", ".join(ARCHETYPE_CHOICES)
     )
     confidence: float = Field(
@@ -49,13 +53,6 @@ class ClassificationResult(BaseModel):
                     "Values must be exact column names from the input data."
     )
 
-    @field_validator("archetype")
-    @classmethod
-    def validate_archetype(cls, v: str) -> str:
-        if v not in ARCHETYPE_CHOICES:
-            raise ValueError(f"archetype must be one of {ARCHETYPE_CHOICES}, got '{v}'")
-        return v
-
     def model_post_init(self, __context: Any) -> None:
         """Automatically downgrade to GENERIC when confidence is too low."""
         self.enforce_low_confidence_generic()
@@ -63,6 +60,11 @@ class ClassificationResult(BaseModel):
     def enforce_low_confidence_generic(self) -> "ClassificationResult":
         """Force GENERIC archetype when confidence < 0.6."""
         if self.confidence < 0.6:
+            logger.warning(
+                "Confidence %.2f < 0.6 — forcing GENERIC archetype (was: %s)",
+                self.confidence,
+                self.archetype,
+            )
             self.archetype = "GENERIC"
         return self
 
@@ -137,11 +139,15 @@ class DomainClassifier:
         return "\n".join(prompt_lines)
 
     def _call_llm(
-        self, messages: list[dict], schema: dict[str, Any] | None = None
+        self,
+        messages: list[dict],
+        schema: dict[str, Any] | None = None,
+        *,
+        _retry: bool = False,
     ) -> dict[str, Any]:
         """Call vLLM with guided_json schema.
 
-        Override this method in tests or for alternative LLM backends.
+        On JSON decode failure, retries once with a stricter prompt appended.
 
         Args:
             messages: Chat completion messages
@@ -150,9 +156,12 @@ class DomainClassifier:
 
         Returns:
             Parsed JSON response as a dict
+
+        Raises:
+            ValueError: If LLM returns invalid JSON after retry.
         """
         effective_schema = schema or ClassificationResult.model_json_schema()
-        url = f"{self.settings.VLLM_BASE_URL}/v1/chat/completions"
+        url = f"{self.settings.VLLM_BASE_URL.rstrip('/')}/v1/chat/completions"
         payload = {
             "model": self.settings.VLLM_MODEL,
             "messages": messages,
@@ -166,4 +175,23 @@ class DomainClassifier:
         resp.raise_for_status()
         data = resp.json()
         content = data["choices"][0]["message"]["content"]
-        return json.loads(content)
+        try:
+            return json.loads(content)
+        except json.JSONDecodeError as exc:
+            if _retry:
+                raise ValueError(
+                    f"LLM returned invalid JSON after retry: {content!r}"
+                ) from exc
+            logger.warning("JSON decode failed, retrying with stricter prompt.")
+            stricter_messages = messages + [
+                {"role": "assistant", "content": content},
+                {
+                    "role": "user",
+                    "content": (
+                        "Votre réponse n'est pas du JSON valide. "
+                        "Répondez UNIQUEMENT avec du JSON valide correspondant au schéma fourni, "
+                        "sans texte supplémentaire ni balises markdown."
+                    ),
+                },
+            ]
+            return self._call_llm(stricter_messages, schema=effective_schema, _retry=True)

@@ -17,6 +17,8 @@ from typing import Any
 import pandas as pd
 from markitdown import MarkItDown
 
+from config import Settings
+
 
 @dataclass
 class DataProfile:
@@ -75,7 +77,9 @@ class DataProfile:
 class DataAnalyzer:
     """Analyse un fichier Excel et produit un DataProfile."""
 
-    _md = MarkItDown()
+    def __init__(self, settings: Settings | None = None):
+        self.settings = settings or Settings()
+        self._md = MarkItDown()
 
     def analyze(self, file_path: str) -> DataProfile:
         """Analyze an Excel file and return a DataProfile.
@@ -135,7 +139,7 @@ class DataAnalyzer:
                     entry["max"] = float(series.max())
                     entry["avg"] = float(series.mean())
                 else:
-                    top = series.value_counts().head(5).index.tolist()
+                    top = series.value_counts().head(self.settings.STATS_TOP_VALUES).index.tolist()
                     entry["top"] = [str(v) for v in top]
                 stats[key] = entry
         return stats
@@ -192,7 +196,7 @@ class DataAnalyzer:
             parts = []
             for sheet, df in sheets_data.items():
                 parts.append(f"## {sheet}\n")
-                parts.append(df.head(10).to_markdown(index=False))
+                parts.append(df.head(self.settings.MARKITDOWN_MAX_ROWS).to_markdown(index=False))
                 parts.append("\n")
             return "\n".join(parts)
         except Exception:

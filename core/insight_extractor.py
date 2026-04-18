@@ -10,9 +10,12 @@ Max 5 insights, sorted by priority.
 from __future__ import annotations
 
 import json
+import logging
 import requests
 from typing import Any
 from pydantic import BaseModel, Field, field_validator
+
+logger = logging.getLogger(__name__)
 
 from config import Settings
 from core.data_analyzer import DataProfile
@@ -138,11 +141,15 @@ class InsightExtractor:
         return "\n".join(prompt_lines)
 
     def _call_llm(
-        self, messages: list[dict], schema: dict[str, Any] | None = None
+        self,
+        messages: list[dict],
+        schema: dict[str, Any] | None = None,
+        *,
+        _retry: bool = False,
     ) -> dict[str, Any]:
         """Call vLLM with guided_json schema.
 
-        Override this method in tests or for alternative LLM backends.
+        On JSON decode failure, retries once with a stricter prompt appended.
 
         Args:
             messages: Chat completion messages
@@ -151,9 +158,12 @@ class InsightExtractor:
 
         Returns:
             Parsed JSON response as a dict
+
+        Raises:
+            ValueError: If LLM returns invalid JSON after retry.
         """
         effective_schema = schema or InsightReport.model_json_schema()
-        url = f"{self.settings.VLLM_BASE_URL}/v1/chat/completions"
+        url = f"{self.settings.VLLM_BASE_URL.rstrip('/')}/v1/chat/completions"
         payload = {
             "model": self.settings.VLLM_MODEL,
             "messages": messages,
@@ -167,4 +177,23 @@ class InsightExtractor:
         resp.raise_for_status()
         data = resp.json()
         content = data["choices"][0]["message"]["content"]
-        return json.loads(content)
+        try:
+            return json.loads(content)
+        except json.JSONDecodeError as exc:
+            if _retry:
+                raise ValueError(
+                    f"LLM returned invalid JSON after retry: {content!r}"
+                ) from exc
+            logger.warning("JSON decode failed, retrying with stricter prompt.")
+            stricter_messages = messages + [
+                {"role": "assistant", "content": content},
+                {
+                    "role": "user",
+                    "content": (
+                        "Votre réponse n'est pas du JSON valide. "
+                        "Répondez UNIQUEMENT avec du JSON valide correspondant au schéma fourni, "
+                        "sans texte supplémentaire ni balises markdown."
+                    ),
+                },
+            ]
+            return self._call_llm(stricter_messages, schema=effective_schema, _retry=True)

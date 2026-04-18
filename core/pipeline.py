@@ -37,7 +37,7 @@ class PipelineResult:
     def to_dict(self) -> dict[str, Any]:
         """Serialize the pipeline result to a dict."""
         return {
-            "profile": self.profile.to_json() if self.profile else None,
+            "profile": json.loads(self.profile.to_json()) if self.profile else None,
             "classification": self.classification.model_dump() if self.classification else None,
             "insights": self.insights.model_dump() if self.insights else None,
             "dashboard_plan": self.dashboard_plan.model_dump() if self.dashboard_plan else None,
@@ -68,7 +68,7 @@ class PipelineOrchestrator:
 
     def __init__(self, settings: Settings | None = None):
         self.settings = settings or Settings()
-        self.data_analyzer = DataAnalyzer()
+        self.data_analyzer = DataAnalyzer(settings)
         self.classifier = DomainClassifier(settings)
         self.insight_extractor = InsightExtractor(settings)
         self.composer = DashboardComposer(settings)
