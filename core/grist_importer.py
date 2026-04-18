@@ -11,9 +11,8 @@ Utilise uniquement l'API REST Grist.
 import os
 import math
 import re
-import warnings
 from datetime import datetime, date
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import pandas as pd
 from core.grist_api import GristAPI, GristConnectionError
@@ -65,10 +64,7 @@ def _infer_grist_type(series: pd.Series) -> str:
         if floats:
             # Check if all values are integers
             if all(float(v).is_integer() for v in floats):
-                # Return "Int" only if all values are small integers (≤ 1000)
-                # This avoids mis-classifying large numeric measurements like salaries
-                if all(abs(float(v)) <= 1000 for v in floats):
-                    return "Int"
+                return "Int"
             return "Numeric"
     except (ValueError, TypeError):
         pass

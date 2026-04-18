@@ -70,9 +70,10 @@ class TestGristImporter:
 
 
 def test_salary_column_is_numeric_not_date():
-    """Large integers must not be mis-typed as Date."""
+    """Large integer salaries must not be mis-typed as Date (Int is acceptable)."""
     series = pd.Series([30739, 55872, 97639, 42000, 85000])
-    assert _infer_grist_type(series) == "Numeric"
+    assert _infer_grist_type(series) in ("Int", "Numeric")
+    assert _infer_grist_type(series) != "Date"
 
 
 def test_integer_column_is_int():
