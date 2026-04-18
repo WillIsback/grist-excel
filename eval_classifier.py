@@ -152,7 +152,7 @@ def eval_dashboard_composer(
         }
 
 
-def generate_report(results: dict, output_dir: Path) -> None:
+def generate_report(results: dict[str, dict[str, dict]], output_dir: Path) -> None:
     """Generate report.md comparing all agent/version combinations."""
     lines = ["# Prompt Evaluation Report\n"]
 

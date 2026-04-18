@@ -105,6 +105,10 @@ def main() -> None:
     importer = GristImporter(api)
     try:
         doc_id = importer.import_excel(args.input)
+    except KeyboardInterrupt:
+        raise
+    except SystemExit:
+        raise
     except Exception as exc:
         print(f"  Erreur import : {exc}")
         sys.exit(1)
