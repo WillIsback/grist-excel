@@ -21,6 +21,7 @@ from core.data_analyzer import DataAnalyzer, DataProfile
 from core.domain_classifier import DomainClassifier, ClassificationResult
 from core.insight_extractor import InsightExtractor, InsightReport
 from core.dashboard_composer import DashboardComposer, DashboardPlan
+from core.debug_utils import debug_print
 from config import Settings
 
 
@@ -68,6 +69,7 @@ class PipelineOrchestrator:
 
     def __init__(self, settings: Settings | None = None):
         self.settings = settings or Settings()
+        self.debug = self.settings.DEBUG
         self.data_analyzer = DataAnalyzer(settings)
         self.classifier = DomainClassifier(settings)
         self.insight_extractor = InsightExtractor(settings)
@@ -83,24 +85,26 @@ class PipelineOrchestrator:
             PipelineResult with all stages
         """
         result = PipelineResult()
+        result.profile = profile
+        debug_print("Agent 1 — DataAnalyzer", profile, self.debug)
 
-        # Agent 2: Domain Classification
         try:
             result.classification = self._classify(profile)
+            debug_print("Agent 2 — DomainClassifier", result.classification, self.debug)
         except Exception as e:
             result.errors.append(f"DomainClassifier failed: {e}")
 
-        # Agent 3: Insight Extraction
         if result.classification is not None:
             try:
                 result.insights = self._extract(profile, result.classification)
+                debug_print("Agent 3 — InsightExtractor", result.insights, self.debug)
             except Exception as e:
                 result.errors.append(f"InsightExtractor failed: {e}")
 
-        # Agent 4: Dashboard Composition
         if result.classification is not None and result.insights is not None:
             try:
                 result.dashboard_plan = self._compose(result.classification, result.insights)
+                debug_print("Agent 4 — DashboardComposer", result.dashboard_plan, self.debug)
             except Exception as e:
                 result.errors.append(f"DashboardComposer failed: {e}")
 

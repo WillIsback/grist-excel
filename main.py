@@ -11,6 +11,9 @@ Usage:
     python main.py --input data.xlsx --output ./results/
 """
 
+import warnings
+warnings.filterwarnings('ignore')
+
 import argparse
 import json
 import sys
@@ -41,9 +44,13 @@ def main() -> None:
         "--dry-run", action="store_true",
         help="Afficher le DashboardPlan JSON sans créer de document Grist"
     )
+    parser.add_argument(
+        "--debug", action="store_true",
+        help="Afficher la sortie JSON de chaque étape du pipeline"
+    )
 
     args = parser.parse_args()
-    settings = Settings()
+    settings = Settings(DEBUG=args.debug)
     output_dir = Path(args.output)
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -113,6 +120,10 @@ def main() -> None:
         print(f"  Erreur import : {exc}")
         sys.exit(1)
     print(f"  Document créé : {doc_id}")
+
+    if settings.DEBUG:
+        from core.debug_utils import debug_print
+        debug_print("GristImporter", {"doc_id": doc_id}, True)
 
     # Step 4: Apply archetype template
     print("\n[4/4] Application du template archetype...")
