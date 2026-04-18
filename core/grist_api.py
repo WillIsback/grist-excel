@@ -425,7 +425,7 @@ class GristAPI:
         response = self._request_with_retry(
             "POST",
             self._doc_url(doc_id, "apply"),
-            json={"actions": actions},
+            json=actions,
         )
         return response.json()
 

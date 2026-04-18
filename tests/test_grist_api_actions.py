@@ -73,7 +73,7 @@ class TestApplyActions:
         assert call_kwargs[0][0] == "POST"
         assert "doc123/apply" in call_kwargs[0][1]
         body = call_kwargs[1].get("json", {})
-        assert body == {"actions": actions}
+        assert body == actions
 
     def test_returns_response_json(self, api, mock_session):
         mock_session.request.return_value = _resp({"results": [1, 2]})
