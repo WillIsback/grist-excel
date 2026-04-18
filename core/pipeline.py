@@ -1,0 +1,139 @@
+"""Pipeline Orchestrator — chains Agent 1 → 2 → 3 → 4.
+
+Coordinates the full data-to-dashboard pipeline:
+1. DataAnalyzer: Excel → DataProfile
+2. DomainClassifier: DataProfile → ClassificationResult
+3. InsightExtractor: DataProfile + Classification → InsightReport
+4. DashboardComposer: Classification + Insights → DashboardPlan
+
+Handles errors gracefully — if one agent fails, subsequent agents
+receive None and the pipeline records the error but continues.
+"""
+
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+from core.data_analyzer import DataAnalyzer, DataProfile
+from core.domain_classifier import DomainClassifier, ClassificationResult
+from core.insight_extractor import InsightExtractor, InsightReport
+from core.dashboard_composer import DashboardComposer, DashboardPlan
+from config import Settings
+
+
+@dataclass
+class PipelineResult:
+    """Result of a full pipeline run."""
+
+    profile: DataProfile | None = None
+    classification: ClassificationResult | None = None
+    insights: InsightReport | None = None
+    dashboard_plan: DashboardPlan | None = None
+    errors: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize the pipeline result to a dict."""
+        return {
+            "profile": self.profile.to_json() if self.profile else None,
+            "classification": self.classification.model_dump() if self.classification else None,
+            "insights": self.insights.model_dump() if self.insights else None,
+            "dashboard_plan": self.dashboard_plan.model_dump() if self.dashboard_plan else None,
+            "errors": self.errors,
+        }
+
+    def save(self, output_dir: str) -> None:
+        """Save the pipeline result to JSON.
+
+        Accepts either a directory path (creates pipeline_result.json inside)
+        or a file path ending in .json (writes directly to it).
+        """
+        p = Path(output_dir)
+        if p.exists() and p.is_dir():
+            output_file = p / "pipeline_result.json"
+        elif output_dir.lower().endswith(".json"):
+            p.parent.mkdir(parents=True, exist_ok=True)
+            output_file = p
+        else:
+            p.mkdir(parents=True, exist_ok=True)
+            output_file = p / "pipeline_result.json"
+        with open(output_file, "w", encoding="utf-8") as f:
+            json.dump(self.to_dict(), f, indent=2, ensure_ascii=False, default=str)
+
+
+class PipelineOrchestrator:
+    """Orchestrates the full data-to-dashboard pipeline."""
+
+    def __init__(self, settings: Settings | None = None):
+        self.settings = settings or Settings()
+        self.data_analyzer = DataAnalyzer()
+        self.classifier = DomainClassifier(settings)
+        self.insight_extractor = InsightExtractor(settings)
+        self.composer = DashboardComposer(settings)
+
+    def run(self, profile: DataProfile) -> PipelineResult:
+        """Run the full pipeline on a DataProfile.
+
+        Args:
+            profile: DataProfile from Agent 1
+
+        Returns:
+            PipelineResult with all stages
+        """
+        result = PipelineResult()
+
+        # Agent 2: Domain Classification
+        try:
+            result.classification = self._classify(profile)
+        except Exception as e:
+            result.errors.append(f"DomainClassifier failed: {e}")
+
+        # Agent 3: Insight Extraction
+        if result.classification is not None:
+            try:
+                result.insights = self._extract(profile, result.classification)
+            except Exception as e:
+                result.errors.append(f"InsightExtractor failed: {e}")
+
+        # Agent 4: Dashboard Composition
+        if result.classification is not None and result.insights is not None:
+            try:
+                result.dashboard_plan = self._compose(result.classification, result.insights)
+            except Exception as e:
+                result.errors.append(f"DashboardComposer failed: {e}")
+
+        return result
+
+    def run_from_file(self, file_path: str) -> PipelineResult:
+        """Run the full pipeline starting from an Excel file.
+
+        Args:
+            file_path: Path to the .xlsx file
+
+        Returns:
+            PipelineResult with all stages
+        """
+        profile = self.data_analyzer.analyze(file_path)
+        return self.run(profile)
+
+    def _classify(self, profile: DataProfile) -> ClassificationResult:
+        """Run Agent 2: Domain Classification."""
+        return self.classifier.classify(profile)
+
+    def _extract(
+        self,
+        profile: DataProfile,
+        classification: ClassificationResult,
+    ) -> InsightReport:
+        """Run Agent 3: Insight Extraction."""
+        return self.insight_extractor.extract(profile, classification)
+
+    def _compose(
+        self,
+        classification: ClassificationResult,
+        insights: InsightReport,
+    ) -> DashboardPlan:
+        """Run Agent 4: Dashboard Composition."""
+        return self.composer.compose(classification, insights)

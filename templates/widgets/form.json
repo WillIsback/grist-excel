@@ -1,0 +1,30 @@
+{
+  "widgetType": "Form",
+  "title": "Data Entry Form",
+  "description": "Interactive form for data entry and validation",
+  "config": {
+    "fields": [],
+    "layout": "vertical",
+    "submitLabel": "Submit",
+    "resetEnabled": true,
+    "validationMode": "onSubmit",
+    "showRequiredIndicator": true,
+    "autoSave": false
+  },
+  "styling": {
+    "theme": "default",
+    "fieldSpacing": "normal",
+    "labelPosition": "top",
+    "buttonStyle": "primary"
+  },
+  "validation": {
+    "requiredFields": [],
+    "customValidators": [],
+    "errorDisplay": "inline"
+  },
+  "actions": {
+    "onSubmit": "save",
+    "onReset": "clear",
+    "onCancel": "close"
+  }
+}

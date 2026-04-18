@@ -1,0 +1,25 @@
+{
+  "widgetType": "Table",
+  "title": "Table View",
+  "description": "Display data in a tabular format with sorting and filtering",
+  "config": {
+    "columns": [],
+    "pageSize": 25,
+    "sortable": true,
+    "filterable": true,
+    "editable": false,
+    "showRowNumbers": true,
+    "highlightSelection": true
+  },
+  "styling": {
+    "theme": "default",
+    "headerStyle": "bold",
+    "alternateRows": true,
+    "borderStyle": "solid"
+  },
+  "actions": {
+    "exportEnabled": true,
+    "printEnabled": false,
+    "refreshEnabled": true
+  }
+}

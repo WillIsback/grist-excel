@@ -1,0 +1,46 @@
+{
+  "widgetType": "Chart",
+  "title": "Data Visualization",
+  "description": "Visual representation of data using various chart types",
+  "config": {
+    "chartType": "bar",
+    "dataSource": "",
+    "xAxis": {
+      "field": "",
+      "label": "",
+      "type": "category"
+    },
+    "yAxis": {
+      "field": "",
+      "label": "",
+      "type": "value"
+    },
+    "series": [],
+    "legend": {
+      "enabled": true,
+      "position": "bottom"
+    },
+    "tooltip": {
+      "enabled": true,
+      "format": "default"
+    }
+  },
+  "styling": {
+    "theme": "default",
+    "colorPalette": "default",
+    "showGrid": true,
+    "animate": true
+  },
+  "interactivity": {
+    "zoomEnabled": false,
+    "panEnabled": false,
+    "clickAction": "highlight",
+    "drillDownEnabled": false
+  },
+  "dataTransformations": {
+    "aggregation": "sum",
+    "groupBy": [],
+    "sortBy": "",
+    "limit": null
+  }
+}
