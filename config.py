@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     MAX_RETRIES: int = 3
     RECORD_CHUNK_SIZE: int = 100
     TIMEOUT_GRIST: int = 30
+    DEBUG: bool = False
 
     # Data analysis settings
     MARKITDOWN_MAX_ROWS: int = 50  # max rows per sheet in Markdown summary
