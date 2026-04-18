@@ -151,3 +151,52 @@ class TestHRArchetype:
         pages = archetype.apply(api, "doc123", hr_classification, hr_plan)
         assert isinstance(pages, list)
         assert len(pages) > 0
+
+
+from core.archetype_engine import ArchetypeEngine
+from archetypes.decisionnel import DecisionnelArchetype
+from archetypes.support import SupportArchetype
+from archetypes.student import StudentArchetype
+from archetypes.si import SIArchetype
+from archetypes.project import ProjectArchetype
+from unittest.mock import patch
+
+
+class TestArchetypeEngine:
+    def test_dispatches_hr_to_hr_archetype(self, mock_api, hr_classification, hr_plan):
+        engine = ArchetypeEngine(mock_api)
+        with patch.object(HRArchetype, "apply", return_value=["p1"]) as mock_apply:
+            result = engine.apply("doc123", hr_classification, hr_plan)
+        mock_apply.assert_called_once()
+        assert result == ["p1"]
+
+    def test_dispatches_generic_archetype(self, mock_api, classification, simple_plan):
+        engine = ArchetypeEngine(mock_api)
+        with patch.object(GenericArchetype, "apply", return_value=["p1"]) as mock_apply:
+            result = engine.apply("doc123", classification, simple_plan)
+        mock_apply.assert_called_once()
+        assert result == ["p1"]
+
+    def test_falls_back_to_generic_on_unknown_archetype(self, mock_api, simple_plan):
+        """Unknown archetype string → GenericArchetype used."""
+        classification = ClassificationResult(
+            archetype="GENERIC", confidence=0.3,
+            table_mapping={}, params={},
+        )
+        engine = ArchetypeEngine(mock_api)
+        # confidence < 0.6 forces GENERIC anyway; also test explicit unknown via mock
+        with patch.dict("core.archetype_engine.ARCHETYPE_MAP", {}, clear=True):
+            with patch.object(GenericArchetype, "apply", return_value=[]) as mock_apply:
+                engine.apply("doc123", classification, simple_plan)
+        mock_apply.assert_called_once()
+
+    def test_returns_empty_list_on_exception(self, mock_api, hr_classification, hr_plan):
+        engine = ArchetypeEngine(mock_api)
+        with patch.object(HRArchetype, "apply", side_effect=Exception("boom")):
+            result = engine.apply("doc123", hr_classification, hr_plan)
+        assert result == []
+
+    def test_all_seven_archetypes_in_map(self):
+        from core.archetype_engine import ARCHETYPE_MAP
+        expected = {"HR", "DECISIONNEL", "SUPPORT", "STUDENT", "SI", "PROJECT", "GENERIC"}
+        assert set(ARCHETYPE_MAP.keys()) == expected
