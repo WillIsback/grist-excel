@@ -1,6 +1,6 @@
 """Tests for archetypes/base.py — BaseArchetype and GristTableResolver."""
 import pytest
-from unittest.mock import MagicMock, call
+from unittest.mock import MagicMock
 from archetypes.base import BaseArchetype, GristTableResolver
 from core.grist_api import GristAPI
 
