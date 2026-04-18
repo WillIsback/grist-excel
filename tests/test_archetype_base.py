@@ -25,7 +25,7 @@ class TestGristTableResolver:
 
     def test_raises_on_unknown_table(self, mock_api):
         resolver = GristTableResolver(mock_api, "doc123")
-        with pytest.raises(KeyError):
+        with pytest.raises(KeyError, match="Available"):
             resolver.get_ref("NonExistent")
 
     def test_calls_grist_tables_endpoint(self, mock_api):

@@ -413,7 +413,7 @@ class GristAPI:
         """Appliquer des actions internes Grist à un document.
 
         POST /api/docs/{docId}/apply
-        Body: {"actions": [[actionType, tableId, rowId, fields], ...]}
+        Body: [[actionType, tableId, rowId, fields], ...]   ← bare JSON array, NOT wrapped in {"actions": ...}
 
         Args:
             doc_id: Identifiant du document cible
@@ -759,11 +759,11 @@ class GristAPI:
         Query params: filter, sort, limit
         """
         params = {}
-        if filter:
+        if filter is not None:
             params["filter"] = filter
-        if sort:
+        if sort is not None:
             params["sort"] = sort
-        if limit:
+        if limit is not None:
             params["limit"] = limit
 
         response = self._request_with_retry(
