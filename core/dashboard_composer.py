@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import requests
 from typing import Any
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -53,8 +54,11 @@ class PageSection(BaseModel):
 
     @model_validator(mode="after")
     def validate_chart_fields(self):
-        if self.widget == "chart" and not all([self.chart_type, self.table, self.x, self.y, self.agg]):
-            raise ValueError("chart widgets require chart_type, table, x, y, and agg fields")
+        if self.widget == "chart":
+            if not all([self.chart_type, self.table, self.x]):
+                raise ValueError("chart widgets require chart_type, table, and x fields")
+            if self.y is None and self.agg is None:
+                raise ValueError("chart widgets require at least y or agg field")
         return self
 
 
@@ -190,6 +194,7 @@ class DashboardComposer:
             "messages": messages,
             "max_tokens": 4096,
             "temperature": 0.3,
+            "chat_template_kwargs": {"enable_thinking": False},
             "extra_body": {
                 "guided_json": effective_schema,
             },
@@ -197,7 +202,13 @@ class DashboardComposer:
         resp = requests.post(url, json=payload, timeout=self.settings.VLLM_TIMEOUT)
         resp.raise_for_status()
         data = resp.json()
-        content = data["choices"][0]["message"]["content"]
+        message = data["choices"][0]["message"]
+        content = message.get("content") or message.get("reasoning")
+        if content is None:
+            raise ValueError("Empty response from LLM")
+        json_match = re.search(r'\{[\s\S]*\}', content)
+        if json_match:
+            content = json_match.group(0)
         try:
             return json.loads(content)
         except json.JSONDecodeError as exc:

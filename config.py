@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     VLLM_BASE_URL: str = "http://172.17.0.1:30000"
     VLLM_MODEL: str = "Qwen/Qwen3.6-35B-A3B-FP8"
     VLLM_MODEL_NAME: str = ""
-    VLLM_TIMEOUT: int = 30
+    VLLM_TIMEOUT: int = 300
 
     # Excel processing
     EXCEL_MAX_ROWS: int = 10000
