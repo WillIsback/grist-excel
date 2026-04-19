@@ -1,7 +1,7 @@
 {
-  "pythonVersion": "3.11",
+  "pythonVersion": "3.12",
   "venvPath": ".",
-  "venv": "venv",
+  "venv": ".venv",
   "include": ["."],
   "extraPaths": ["."]
 }
