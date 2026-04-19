@@ -1,150 +1,196 @@
 # Grist Excel to Application Converter
 
-Transform Excel files into structured Grist applications with forms and dashboards using Qwen3.5-122B.
+Automatically transforms Excel files into fully configured Grist applications with dashboards, forms, and charts — powered by local LLM inference.
+
+## Overview
+
+Upload an Excel spreadsheet and receive a ready-to-use Grist document with:
+
+- **Smart schema inference** — column types, relationships, and constraints
+- **Business insight extraction** — anomalies, distributions, correlations
+- **Dashboard generation** — archetype-aware layouts (HR, analytics, project management, etc.)
+- **Interactive widgets** — charts, card views, forms, calendars
+
+```bash
+python main.py --input employees_rh.xlsx
+python main.py --input sales_2024.xlsx --dry-run
+python main.py --input data.xlsx --output ./results/
+```
 
 ## Architecture
 
-### Phase 1: Infrastructure (Already Done)
-- **Model**: Qwen3.5-122B via vLLM (port 30000)
-- **Backend**: FastAPI
-- **Context**: 32k tokens support
-
-### Phase 2: Data Ingestion Pipeline
-- Excel parsing with pandas/openpyxl
-- Metadata extraction (columns, types, samples)
-- Smart token-limiting serialization
-
-### Phase 3: Agent Architecture
-- **Analyst Agent**: Validates data, asks clarifying questions
-- **Architect Agent**: Designs relational schema
-- **UI Agent**: Maps to Grist widgets (forms, charts, dashboards)
-
-### Phase 4: Grist Generation
-- Python scripts using pygrister or grist-api
-- Template-based widget generation
-- Syntax validation before API calls
-
-### Phase 5: Optimization
-- RAG with Grist examples (Phase 1)
-- GRPO fine-tuning (Phase 2, optional)
-
-## Grist Widget Types
-
-1. **Table**: Display many records
-2. **Card**: Single record form view
-3. **Card List**: Scrollable list of records
-4. **Form**: External form for data entry
-5. **Chart**: Various chart types (bar, line, pie, etc.)
-6. **Calendar**: Event calendar view
-7. **Custom**: Embedded web page
-
-## Grist Template Examples Found
-
-### Available Templates for RAG:
-- **Finances**:
-  - investment-research-template
-  - personal-budget
-- **Geography**:
-  - US National Park Database
-- **Inventaires**:
-  - lab-inventory-management
-- **Projets**:
-  - lab-project-management-template
-  - recurring-tasks-template
-
-### Example Use Cases from Grist:
-- Credit Card Expenses tracking
-- Book Lists with library links
-- Email preparation with formulas
-- Invoice generation
-- Payroll tracking
-- Mailing labels
-- Treasure Hunt planning
-- Map visualization
-- Task management
-- Lead lists
-- Timesheets
-- Auto time/user stamps
-- Proposals & Contracts
-
-## Python Libraries
-
-### Primary: pygrister (ricpol/pygrister)
-```python
-from pygrister.api import GristApi
-
-grist = GristApi()
-# List users
-status_code, response = grist.list_doc_users()
-# Fetch records
-status_code, response = grist.list_records('Table1')
-# Add columns
-cols = [{'id': 'age', 'fields': {'label': 'age', 'type': 'Int'}}]
-status_code, response = grist.add_cols('Table1', cols)
+```
+Excel File
+    │
+    ▼
+[Data Analyzer]     Parse sheets, infer types, extract samples
+    │
+    ▼
+[Domain Classifier] Match to archetype (HR, finance, project, …)
+    │
+    ▼
+[Insight Extractor] Statistical analysis + LLM-powered insights
+    │
+    ▼
+[Dashboard Composer] Generate page/widget plan
+    │
+    ▼
+[Grist Importer]    Upload raw data to Grist via API
+    │
+    ▼
+[Archetype Engine]  Apply template widgets, charts, forms
+    │
+    ▼
+Grist Document
 ```
 
-### Alternative: grist-api (gristlabs/py_grist_api)
-```python
-from grist_api import GristDocAPI
+### LLM Backend
 
-api = GristDocAPI(DOC_ID, server=SERVER)
-# Add records
-rows = api.add_records('Table1', [{'food': 'eggs'}, {'food': 'beets'}])
-# Fetch table
-data = api.fetch_table('Table1')
+Uses a local vLLM instance (e.g. `Qwen3.6-35B-A3B-FP8`) for all inference. No external API calls — fully self-hosted.
+
+## Setup
+
+### Prerequisites
+
+- Python 3.11+
+- Local vLLM server running (default: `http://172.17.0.1:30000`)
+- Grist instance running (default: `http://localhost:8484`)
+
+### Installation
+
+```bash
+cd grist-excel
+uv venv
+source .venv/bin/activate
+uv pip install -r requirements.txt
 ```
 
-## Next Steps
+### Configuration
 
-1. **Create MVP Prototype** (Priority 1)
-   - Simple Excel → Schema → Grist API flow
-   - Test with sample Excel file
-   - No agents yet, direct LLM call
+Copy the example env file and adjust values:
 
-2. **Add Agent Orchestration** (Priority 2)
-   - Implement CrewAI with 3 agents
-   - Add validation layer
-
-3. **Build RAG Database** (Priority 3)
-   - Download Grist template examples
-   - Store in AnythingLLM
-   - Create retrieval system
-
-4. **Fine-tuning** (Optional)
-   - Only if MVP + RAG not sufficient
-   - Use Unsloth on GB10
-
-## File Structure
-
-```
-/home/wderue/workspace/grist-excel/
-├── README.md
-├── core/
-│   ├── excel_parser.py
-│   ├── schema_generator.py
-│   └── grist_client.py
-├── agents/
-│   ├── analyst.py
-│   ├── architect.py
-│   └── ui_designer.py
-├── templates/
-│   └── grist_widgets.json
-├── rag/
-│   └── grist_examples/
-├── tests/
-└── main.py
+```bash
+cp .env.example .env   # if provided, otherwise create manually
 ```
 
-## Key Grist API Endpoints
+Required environment variables:
 
-- `GET /api/docs/{docId}/tables` - List tables
-- `POST /api/docs/{docId}/tables/{tableName}/records` - Add records
-- `PATCH /api/docs/{docId}/tables/{tableName}/columns` - Add/modify columns
-- `POST /api/docs/{docId}/views` - Create views
-- `POST /api/docs/{docId}/widgets` - Add widgets
+| Variable | Default | Description |
+|---|---|---|
+| `VLLM_BASE_URL` | `http://172.17.0.1:30000` | Local vLLM inference endpoint |
+| `VLLM_MODEL` | `Qwen/Qwen3.6-35B-A3B-FP8` | Model identifier |
+| `GRIST_SERVER` | `http://localhost:8484` | Grist instance URL |
+| `GRIST_API_KEY` | *(empty)* | Grist API key from Profile Settings |
+| `GRIST_DOC_ID` | *(empty)* | Target document ID |
 
-## Authentication
+## Usage
 
-- API Key from Grist Profile Settings
-- Set via `GRIST_API_KEY` environment variable
-- Server: `https://subdomain.getgrist.com`
+### Basic pipeline
+
+```bash
+python main.py --input samples/demo_data.xlsx
+```
+
+### Dry run (no Grist creation)
+
+```bash
+python main.py --input samples/demo_data.xlsx --dry-run
+```
+
+Outputs the dashboard plan as JSON without touching Grist.
+
+### Debug mode
+
+```bash
+python main.py --input samples/demo_data.xlsx --debug
+```
+
+Prints JSON output from each pipeline agent step.
+
+### Custom output directory
+
+```bash
+python main.py --input data.xlsx --output ./results/
+```
+
+## Project Structure
+
+```
+grist-excel/
+├── main.py                  # CLI entry point
+├── config.py                # Settings (pydantic, env-based)
+├── requirements.txt
+├── .env                     # ← NEVER commit (contains API keys)
+│
+├── core/                    # Pipeline stages
+│   ├── data_analyzer.py
+│   ├── domain_classifier.py
+│   ├── insight_extractor.py
+│   ├── dashboard_composer.py
+│   ├── grist_api.py
+│   ├── grist_importer.py
+│   ├── archetype_engine.py
+│   └── pipeline.py
+│
+├── archetypes/              # Domain-specific templates
+│   ├── base.py
+│   ├── hr.py
+│   ├── decisionnel.py
+│   ├── project.py
+│   ├── student.py
+│   ├── si.py
+│   └── support.py
+│
+├── prompts/                 # LLM prompt templates (versioned)
+│   ├── domain_classifier_v*.md
+│   ├── data_analyzer_v*.md
+│   ├── insight_extractor_v*.md
+│   └── dashboard_composer_v*.md
+│
+├── templates/widgets/       # Grist widget JSON templates
+├── samples/                 # Demo files (gitignored)
+├── tests/                   # pytest suite
+├── output/                  # Generated artifacts (gitignored)
+└── docs/
+```
+
+## Archetypes
+
+The domain classifier maps input data to one of several archetypes, each with pre-built widget templates:
+
+| Archetype | Description | Typical Widgets |
+|---|---|---|
+| `hr` | Employee/HR data | Org chart, headcount cards, leave tracker |
+| `decisionnel` | Business intelligence | KPI dashboards, trend charts |
+| `project` | Project management | Gantt views, task boards |
+| `student` | Academic data | Grade trackers, schedules |
+| `si` | IT/service desk | Ticket queues, SLA monitors |
+| `support` | Customer support | Ticket views, satisfaction scores |
+| `generic` | Fallback | Basic table + summary |
+
+## Security Notes
+
+- **Never commit `.env`** — it contains your Grist API key
+- **Never commit `output/`** — contains generated `.grist` documents and credential files
+- **Sample Excel files are gitignored** — they may contain sensitive personnel data
+- All LLM inference runs locally via vLLM — no data leaves your machine
+
+## Development
+
+### Running tests
+
+```bash
+uv pip install -r requirements.txt
+pytest
+```
+
+### Adding a new archetype
+
+1. Create `archetypes/my_domain.py` inheriting from `BaseArchetype`
+2. Register it in `archetypes/__init__.py`
+3. Add prompt templates in `prompts/`
+4. Add widget templates in `templates/widgets/`
+
+## License
+
+Private / Internal use.

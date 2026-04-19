@@ -1,10 +1,44 @@
-.worktrees/
+# Virtual environment
 venv/
+.venv/
+
+# Python bytecode
 __pycache__/
-*.pyc
-*.pyo
-.env
-output/
+*.py[cod]
+*$py.class
 *.egg-info/
+dist/
+build/
+*.egg
+
+# Test/cache
 .pytest_cache/
-.worktrees
+.coverage
+htmlcov/
+
+# Environment & secrets
+.env
+.env.*
+!.env.example
+
+# Generated output
+output/
+
+# Sample data (may contain sensitive info)
+samples/*.xlsx
+samples/*.csv
+samples/*.grist
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Grist local data
+grist_data/
