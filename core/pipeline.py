@@ -122,7 +122,8 @@ class PipelineOrchestrator:
         if result.classification is not None and result.insights is not None:
             try:
                 result.dashboard_plan = self._compose(
-                    result.classification, result.insights, result.feature_plan
+                    result.classification, result.insights, result.feature_plan,
+                    raw_cols=profile.columns, stats=profile.stats,
                 )
                 debug_print("Agent 4 — DashboardComposer", result.dashboard_plan, self.debug)
             except Exception as e:
@@ -184,6 +185,9 @@ class PipelineOrchestrator:
         classification: ClassificationResult,
         insights: InsightReport,
         feature_plan: "FeaturePlan | None" = None,
+        raw_cols: dict | None = None,
+        stats: dict | None = None,
     ) -> DashboardPlan:
         """Run Agent 4: Dashboard Composition."""
-        return self.composer.compose(classification, insights, feature_plan)
+        return self.composer.compose(classification, insights, feature_plan,
+                                     raw_cols=raw_cols, stats=stats)

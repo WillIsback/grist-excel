@@ -110,18 +110,12 @@ class DashboardComposer:
         insights: InsightReport,
         feature_plan: "FeaturePlan | None" = None,
         retry_context: dict | None = None,
+        raw_cols: dict | None = None,
+        stats: dict | None = None,
     ) -> DashboardPlan:
-        """Compose a dashboard plan.
-
-        Args:
-            classification: ClassificationResult from Agent 2
-            insights: InsightReport from Agent 3
-            feature_plan: FeaturePlan from Agent 3.5 (optional)
-
-        Returns:
-            DashboardPlan with pages and sections
-        """
-        prompt = self._build_prompt(classification, insights, feature_plan, retry_context)
+        """Compose a dashboard plan."""
+        prompt = self._build_prompt(classification, insights, feature_plan, retry_context,
+                                    raw_cols=raw_cols, stats=stats)
         messages = [
             {
                 "role": "system",
@@ -156,6 +150,8 @@ class DashboardComposer:
         insights: InsightReport,
         feature_plan: "FeaturePlan | None" = None,
         retry_context: dict | None = None,
+        raw_cols: dict | None = None,
+        stats: dict | None = None,
     ) -> str:
         """Build the composition prompt."""
         archetype = classification.archetype
@@ -169,7 +165,28 @@ class DashboardComposer:
         for role, table in mapping.items():
             prompt_lines.append(f"  {role} → {table}")
 
+        if raw_cols:
+            prompt_lines.extend(["", "Colonnes disponibles par table (N=numérique, T=texte/ID) :"])
+            for table_id, cols in raw_cols.items():
+                typed_cols = []
+                for col in cols:
+                    key = f"{table_id}.{col}"
+                    col_stats = (stats or {}).get(key, {})
+                    is_numeric = "min" in col_stats and "avg" in col_stats
+                    typed_cols.append(f"{col}({'N' if is_numeric else 'T'})")
+                prompt_lines.append(f"  {table_id}: {', '.join(typed_cols)}")
+
         prompt_lines.extend([
+            "",
+            "Règles OBLIGATOIRES pour les charts :",
+            "  - x et y DOIVENT être deux colonnes DIFFÉRENTES",
+            "  - x : colonne catégorielle (T) — ex: Département, Type, Manager, Région",
+            "  - y : colonne numérique (N) — ex: Salaire_Brute, Durée_Jours, Ancienneté_Jours",
+            "  - Pour agg=count, y = colonne ID de la table (ex: ID_Absence, ID_Employe)",
+            "  - Distribution de catégories → pie ou bar (PAS line)",
+            "  - Tendance temporelle (x=date) → line",
+            "  - Comparaison de moyennes → bar",
+            "  - N'écrivez JAMAIS 'ID' seul — utilisez le nom exact de la colonne ci-dessus",
             "",
             "Insights:",
         ])
