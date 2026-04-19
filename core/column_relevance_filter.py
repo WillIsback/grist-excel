@@ -91,7 +91,11 @@ class ColumnRelevanceFilter:
         json_match = re.search(r"\{[\s\S]*\}", content)
         if json_match:
             content = json_match.group(0)
-        raw_scores: dict[str, float] = json.loads(content).get("scores", {})
+        try:
+            raw_scores: dict[str, float] = json.loads(content).get("scores", {})
+        except json.JSONDecodeError:
+            logger.warning("ColumnRelevanceFilter: invalid JSON from vLLM — returning neutral scores")
+            return {k: 0.5 for k in column_keys}
         return {k: float(raw_scores.get(k, 0.5)) for k in column_keys}
 
     def _apply_hysteresis(self, scores: dict[str, float]) -> set[str]:
