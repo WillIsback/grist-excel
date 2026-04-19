@@ -183,10 +183,12 @@ class DashboardComposer:
             "  - x : colonne catégorielle (T) — ex: Département, Type, Manager, Région",
             "  - y : colonne numérique (N) — ex: Salaire_Brute, Durée_Jours, Ancienneté_Jours",
             "  - Pour agg=count, y = colonne ID de la table (ex: ID_Absence, ID_Employe)",
-            "  - Distribution de catégories → pie ou bar (PAS line)",
+            "  - Distribution de catégories (x=Text avec ≥3 valeurs) → pie ou bar",
+            "  - Colonne Toggle/booléen (True/False) → bar UNIQUEMENT (pas pie)",
             "  - Tendance temporelle (x=date) → line",
             "  - Comparaison de moyennes → bar",
             "  - N'écrivez JAMAIS 'ID' seul — utilisez le nom exact de la colonne ci-dessus",
+            "  - N'utilisez PAS de colonnes dérivées (Toggle) comme x dans un pie chart",
             "",
             "Insights:",
         ])

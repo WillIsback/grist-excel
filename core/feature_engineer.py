@@ -45,24 +45,27 @@ class FeaturePlan(BaseModel):
 
 
 GRIST_FORMULA_EXAMPLES = """
-# Count related records
-len(Absences.lookupRecords(ID_Employe=$ID_Employe))
+# IMPORTANT: utiliser le NOM EXACT de la table tel que fourni dans le mapping ci-dessus
+# (avec accents si présents — ex: "Évaluations" pas "Evaluations")
 
-# Boolean existence check (returns True/False)
-bool(Evaluations.lookupOne(ID_Employe=$ID_Employe).ID_Employe)
+# Compter des enregistrements liés (remplacer TABLE et COL_FK par les vrais noms)
+len(TABLE.lookupRecords(COL_FK=$COL_PK))
 
-# Numeric bucketing
-"Haut" if $Salaire_Brute > 70000 else ("Moyen" if $Salaire_Brute > 45000 else "Bas")
+# Vérification d'existence booléenne
+bool(TABLE.lookupOne(COL_FK=$COL_PK).COL_FK)
 
-# Average from related table (safe division)
-(sum(Evaluations.lookupRecords(ID_Employe=$ID_Employe).Note) /
- max(len(Evaluations.lookupRecords(ID_Employe=$ID_Employe)), 1))
+# Bucketing numérique
+"Haut" if $ColNum > 70000 else ("Moyen" if $ColNum > 45000 else "Bas")
 
-# Days since a date column
-(TODAY() - $Date_Embauche).days if $Date_Embauche else 0
+# Moyenne d'une table liée (division sécurisée)
+(sum(TABLE.lookupRecords(COL_FK=$COL_PK).ColVal) /
+ max(len(TABLE.lookupRecords(COL_FK=$COL_PK)), 1))
 
-# Boolean null check
-not bool($Manager)
+# Jours depuis une date
+(TODAY() - $DateCol).days if $DateCol else 0
+
+# Null check booléen
+not bool($ColNullable)
 """
 
 
@@ -116,6 +119,10 @@ class FeatureEngineer:
         for ins in insights.insights:
             lines.append(f"  [{ins.type}] {ins.table}.{ins.col}: {ins.finding}")
 
+        lines.extend(["", "Noms EXACTS des tables Grist à utiliser dans les formules :"])
+        for role, table_name in classification.table_mapping.items():
+            lines.append(f"  {role} → '{table_name}' (accents inclus)")
+
         lines.extend([
             "",
             "Exemples de formules Grist Python valides :",
@@ -124,7 +131,7 @@ class FeatureEngineer:
             "Règles :",
             "  - col_id: ASCII uniquement, pas d'espaces, pas d'accents",
             "  - table: clé sémantique du mapping (ex: 'employees', 'absences')",
-            "  - Référencez des tables exactement comme dans le mapping",
+            "  - Dans les formules Python lookupRecords, utiliser le NOM EXACT ci-dessus",
             "  - 0 features si aucun insight ne nécessite de colonne dérivée",
             "",
             "Schéma JSON attendu :",
