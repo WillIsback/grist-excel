@@ -48,6 +48,10 @@ def main() -> None:
         "--debug", action="store_true",
         help="Afficher la sortie JSON de chaque étape du pipeline"
     )
+    parser.add_argument(
+        "--interactive", action="store_true",
+        help="Activer les checkpoints interactifs (confirmation archetype + sélection insights)"
+    )
 
     args = parser.parse_args()
     settings = Settings()
@@ -75,7 +79,11 @@ def main() -> None:
 
     # Step 2: Run LLM pipeline
     print("\n[2/4] Pipeline LLM (classification + insights + dashboard plan)...")
-    orchestrator = PipelineOrchestrator(settings)
+    checkpoint_handler = None
+    if args.interactive:
+        from core.checkpoint import CLICheckpointHandler
+        checkpoint_handler = CLICheckpointHandler()
+    orchestrator = PipelineOrchestrator(settings, checkpoint_handler=checkpoint_handler)
     result = orchestrator.run(profile)
 
     if result.errors:
