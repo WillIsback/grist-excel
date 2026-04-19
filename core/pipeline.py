@@ -1,10 +1,12 @@
-"""Pipeline Orchestrator — chains Agent 1 → 2 → 3 → 4.
+"""Pipeline Orchestrator — chains Agent 1 → 2 → 3 → 3.5 → 4 → 4.5.
 
 Coordinates the full data-to-dashboard pipeline:
 1. DataAnalyzer: Excel → DataProfile
 2. DomainClassifier: DataProfile → ClassificationResult
 3. InsightExtractor: DataProfile + Classification → InsightReport
-4. DashboardComposer: Classification + Insights → DashboardPlan
+3.5. FeatureEngineer: Profile + Classification + Insights → FeaturePlan
+4. DashboardComposer: Classification + Insights + FeaturePlan → DashboardPlan
+4.5. ReflexionValidator: DashboardPlan + Classification + Insights → Validated DashboardPlan
 
 Handles errors gracefully — if one agent fails, subsequent agents
 receive None and the pipeline records the error but continues.
@@ -22,6 +24,7 @@ from core.domain_classifier import DomainClassifier, ClassificationResult
 from core.insight_extractor import InsightExtractor, InsightReport
 from core.dashboard_composer import DashboardComposer, DashboardPlan
 from core.feature_engineer import FeatureEngineer, FeaturePlan
+from core.reflexion import ReflexionValidator
 from core.debug_utils import debug_print
 from config import Settings
 
@@ -124,6 +127,31 @@ class PipelineOrchestrator:
                 debug_print("Agent 4 — DashboardComposer", result.dashboard_plan, self.debug)
             except Exception as e:
                 result.errors.append(f"DashboardComposer failed: {e}")
+
+        # Agent 4.5: Reflexion Validation
+        if result.dashboard_plan is not None and result.classification is not None:
+            try:
+                raw_cols = profile.columns
+                engineered_cols: dict[str, list[str]] = {}
+                if result.feature_plan:
+                    for f in result.feature_plan.features:
+                        table_id = result.classification.table_mapping.get(f.table, f.table)
+                        engineered_cols.setdefault(table_id, []).append(f.col_id)
+
+                validator = ReflexionValidator(
+                    raw_cols=raw_cols,
+                    engineered_cols=engineered_cols,
+                    table_mapping=result.classification.table_mapping,
+                )
+                result.dashboard_plan = validator.validate(
+                    result.dashboard_plan,
+                    result.classification,
+                    result.insights,
+                    self.composer,
+                )
+                debug_print("Agent 4.5 — ReflexionValidator", result.dashboard_plan, self.debug)
+            except Exception as e:
+                result.errors.append(f"ReflexionValidator failed: {e}")
 
         return result
 
