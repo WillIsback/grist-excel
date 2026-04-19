@@ -44,16 +44,25 @@ Excel File
 [Domain Classifier]     Archetype métier + table mapping
     |
     v
-[Insight Extractor]     Insights statistiques et narratifs
+★ [Checkpoint 1]        Confirmation archetype + saisie de l'intention utilisateur (CLI)
     |
     v
-[Feature Engineer]      Plan de colonnes dérivées
+[Column Relevance Filter]  Filtre les colonnes stats à celles pertinentes pour l'intention
+    |
+    v
+[Insight Extractor]     Insights focalisés sur l'intention
+    |
+    v
+★ [Checkpoint 2]        Sélection interactive des insights à conserver
+    |
+    v
+[Feature Engineer]      Plan de colonnes dérivées ciblées
     |
     v
 [VisualIntentResolver]  Intentions visuelles déterministes
     |
     v
-[Dashboard Composer]    DashboardPlan + page Syntheses croisees
+[Dashboard Composer]    DashboardPlan orienté par l'intention
     |
     v
 [Reflexion Validator]   Validation et nettoyage du plan
@@ -67,6 +76,8 @@ Excel File
     v
 Grist Document
 ```
+
+Les étapes marquées ★ sont des points d'arrêt interactifs. En mode non-interactif (défaut), le pipeline les ignore et utilise les valeurs détectées automatiquement.
 
 ## Backend LLM
 
@@ -107,6 +118,9 @@ Variables les plus utiles:
 | `DEBUG` | `True` | Active les sorties debug détaillées |
 | `CORRELATION_SUMMARY_MAX_TABLES` | `4` | Limite de tables de synthèse de corrélation |
 | `CORRELATION_SUMMARY_MAX_GROUPS` | `25` | Limite de groupes par synthèse |
+| `RELEVANCE_UPPER` | `0.6` | Seuil haut du filtre de pertinence (colonnes toujours incluses) |
+| `RELEVANCE_LOWER` | `0.25` | Seuil bas du filtre de pertinence (colonnes toujours exclues) |
+| `RELEVANCE_MIN_COLUMNS` | `5` | Nombre minimum de colonnes conservées par le filtre |
 
 ## Utilisation
 
@@ -120,6 +134,53 @@ Sorties principales:
 
 - un document Grist créé sur le serveur cible;
 - un fichier `output/pipeline_result.json` contenant le résultat du pipeline.
+
+### Mode interactif
+
+```bash
+uv run python main.py --input samples/employees_rh.xlsx --interactive
+```
+
+Active les deux checkpoints interactifs:
+
+**Checkpoint 1 — Archetype + intention**
+
+Après la classification, le pipeline affiche l'archetype détecté et les tables mappées, puis demande:
+
+```
+Archetype detected: HR (confidence: 0.87)
+Tables mapped:
+  employees → "Employés"   [4 cols]
+  absences  → "Absences"   [3 cols]
+
+Confirm archetype? [HR/DECISIONNEL/SUPPORT/STUDENT/SI/PROJECT/GENERIC] (enter=keep):
+What do you want to analyze? (enter=skip):
+```
+
+- Appuyer sur Entrée conserve les valeurs détectées.
+- Saisir une question (ex: `pourquoi le turnover est élevé`) focalise les étapes suivantes sur cette intention: filtre des colonnes pertinentes, extraction d'insights ciblés, plan de features et dashboard orientés.
+
+**Checkpoint 2 — Sélection des insights**
+
+Avant la composition du dashboard, le pipeline liste les insights extraits et demande lesquels conserver:
+
+```
+Insights found — select what matters to you:
+
+[1] distribution — Employés.Département
+    IT concentre 45% des effectifs
+    Top: IT, Finance, Ops, RH
+    Include? [Y/n]:
+
+[2] outlier — Employés.Salaire
+    Salaires max élevés en Finance
+    min=30000  max=95000  avg=57000
+    Include? [Y/n]:
+
+Custom focus to add? (enter=skip):
+```
+
+Seuls les insights sélectionnés alimentent le plan de dashboard. Le champ "Custom focus" permet d'ajouter une précision supplémentaire à l'intention.
 
 ### Dry run
 
@@ -163,6 +224,8 @@ grist-excel/
 ├── requirements.txt
 ├── core/
 │   ├── archetype_engine.py
+│   ├── checkpoint.py             # Checkpoint protocol + CLICheckpointHandler
+│   ├── column_relevance_filter.py # Agent 2.5 — filtre hysteresis + solidarité de table
 │   ├── dashboard_composer.py
 │   ├── data_analyzer.py
 │   ├── domain_classifier.py
