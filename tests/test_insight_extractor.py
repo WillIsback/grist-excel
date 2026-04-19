@@ -132,10 +132,6 @@ class TestInsightExtractor:
 
 
 def test_extract_injects_user_intent_into_system_prompt():
-    from core.insight_extractor import InsightExtractor
-    from core.data_analyzer import DataProfile
-    import json as _json
-
     profile = DataProfile.from_json(SAMPLE_PROFILE_JSON)
     classification = ClassificationResult(
         archetype="HR", confidence=0.9,
@@ -160,9 +156,6 @@ def test_extract_injects_user_intent_into_system_prompt():
 
 
 def test_extract_no_intent_unchanged_behavior():
-    from core.insight_extractor import InsightExtractor
-    from core.data_analyzer import DataProfile
-
     profile = DataProfile.from_json(SAMPLE_PROFILE_JSON)
     classification = ClassificationResult(
         archetype="HR", confidence=0.9,

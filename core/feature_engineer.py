@@ -84,7 +84,7 @@ class FeatureEngineer:
         user_intent: str | None = None,
     ) -> FeaturePlan:
         prompt = self._build_prompt(profile, classification, insights)
-        if user_intent:
+        if user_intent and user_intent.strip():
             prompt += (
                 f"\n\nObjectif utilisateur : {user_intent}\n"
                 "Prioriser les colonnes dérivées qui aident à répondre à cette question."

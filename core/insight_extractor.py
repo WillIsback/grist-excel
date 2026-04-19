@@ -81,6 +81,17 @@ class InsightExtractor:
         classification: ClassificationResult,
         user_intent: str | None = None,
     ) -> InsightReport:
+        """Extract business insights from the data.
+
+        Args:
+            profile: DataProfile from Agent 1
+            classification: ClassificationResult from Agent 2
+            user_intent: Optional user question; when provided, focuses extraction
+                exclusively on insights relevant to it.
+
+        Returns:
+            InsightReport with up to 5 insights
+        """
         prompt = self._build_prompt(profile, classification)
         system_content = (
             "Vous êtes un analyste de données métier. "
@@ -89,7 +100,7 @@ class InsightExtractor:
             "et un résumé du résultat en français. "
             "RÉPONDEZ UNIQUEMENT en JSON valide selon le schéma demandé."
         )
-        if user_intent:
+        if user_intent and user_intent.strip():
             system_content += (
                 f"\n\nFOCUS EXCLUSIF sur la question de l'utilisateur : {user_intent}"
                 "\nIgnorez les insights non liés à cette question."

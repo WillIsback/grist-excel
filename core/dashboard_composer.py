@@ -129,7 +129,7 @@ class DashboardComposer:
             "Ajoutez aussi une page formulaire pour la table principale. "
             "RÉPONDEZ UNIQUEMENT en JSON valide selon le schéma demandé."
         )
-        if user_intent:
+        if user_intent and user_intent.strip():
             system_content += (
                 f"\n\nObjectif utilisateur : {user_intent}\n"
                 "Prioriser les widgets qui répondent directement à cette question."
