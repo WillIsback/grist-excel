@@ -81,7 +81,7 @@ class TestPipelineOrchestrator:
             extractors["called"] = True
             return report
 
-        def mock_compose(classification, insights):
+        def mock_compose(classification, insights, feature_plan=None):
             from core.dashboard_composer import DashboardPlan, Page, PageSection
             plan = DashboardPlan(pages=[
                 Page(name="Dashboard RH", sections=[

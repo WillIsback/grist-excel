@@ -21,6 +21,7 @@ from core.data_analyzer import DataAnalyzer, DataProfile
 from core.domain_classifier import DomainClassifier, ClassificationResult
 from core.insight_extractor import InsightExtractor, InsightReport
 from core.dashboard_composer import DashboardComposer, DashboardPlan
+from core.feature_engineer import FeatureEngineer, FeaturePlan
 from core.debug_utils import debug_print
 from config import Settings
 
@@ -32,6 +33,7 @@ class PipelineResult:
     profile: DataProfile | None = None
     classification: ClassificationResult | None = None
     insights: InsightReport | None = None
+    feature_plan: FeaturePlan | None = None
     dashboard_plan: DashboardPlan | None = None
     errors: list[str] = field(default_factory=list)
 
@@ -41,6 +43,7 @@ class PipelineResult:
             "profile": json.loads(self.profile.to_json()) if self.profile else None,
             "classification": self.classification.model_dump() if self.classification else None,
             "insights": self.insights.model_dump() if self.insights else None,
+            "feature_plan": self.feature_plan.model_dump() if self.feature_plan else None,
             "dashboard_plan": self.dashboard_plan.model_dump() if self.dashboard_plan else None,
             "errors": self.errors,
         }
@@ -74,6 +77,7 @@ class PipelineOrchestrator:
         self.classifier = DomainClassifier(settings)
         self.insight_extractor = InsightExtractor(settings)
         self.composer = DashboardComposer(settings)
+        self.feature_engineer = FeatureEngineer(settings)
 
     def run(self, profile: DataProfile) -> PipelineResult:
         """Run the full pipeline on a DataProfile.
@@ -101,9 +105,22 @@ class PipelineOrchestrator:
             except Exception as e:
                 result.errors.append(f"InsightExtractor failed: {e}")
 
+        # Agent 3.5: Feature Engineering
         if result.classification is not None and result.insights is not None:
             try:
-                result.dashboard_plan = self._compose(result.classification, result.insights)
+                result.feature_plan = self.feature_engineer.plan(
+                    profile, result.classification, result.insights
+                )
+                debug_print("Agent 3.5 — FeatureEngineer", result.feature_plan, self.debug)
+            except Exception as e:
+                result.errors.append(f"FeatureEngineer failed: {e}")
+                result.feature_plan = FeaturePlan(features=[])
+
+        if result.classification is not None and result.insights is not None:
+            try:
+                result.dashboard_plan = self._compose(
+                    result.classification, result.insights, result.feature_plan
+                )
                 debug_print("Agent 4 — DashboardComposer", result.dashboard_plan, self.debug)
             except Exception as e:
                 result.errors.append(f"DashboardComposer failed: {e}")
@@ -138,6 +155,7 @@ class PipelineOrchestrator:
         self,
         classification: ClassificationResult,
         insights: InsightReport,
+        feature_plan: "FeaturePlan | None" = None,
     ) -> DashboardPlan:
         """Run Agent 4: Dashboard Composition."""
-        return self.composer.compose(classification, insights)
+        return self.composer.compose(classification, insights, feature_plan)

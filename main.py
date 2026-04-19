@@ -125,6 +125,19 @@ def main() -> None:
         from core.debug_utils import debug_print
         debug_print("GristImporter", {"doc_id": doc_id}, True)
 
+    # Step 3b: Apply engineered formula columns
+    if result.feature_plan and result.feature_plan.features:
+        print("\n[3b/4] Application des colonnes dérivées...")
+        from core.feature_engineer import FeatureEngineer
+        fe = FeatureEngineer(settings)
+        applied, failed = fe.apply(api, doc_id, result.feature_plan, result.classification.table_mapping)
+        print(f"  Colonnes appliquées : {applied}")
+        if failed:
+            print(f"  Colonnes échouées  : {failed}")
+        if settings.DEBUG:
+            from core.debug_utils import debug_print
+            debug_print("FeatureEngineer.apply", {"applied": applied, "failed": failed}, True)
+
     # Step 4: Apply archetype template
     print("\n[4/4] Application du template archetype...")
     engine = ArchetypeEngine(api)

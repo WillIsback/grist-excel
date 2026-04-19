@@ -105,17 +105,19 @@ class DashboardComposer:
         self,
         classification: ClassificationResult,
         insights: InsightReport,
+        feature_plan: "FeaturePlan | None" = None,
     ) -> DashboardPlan:
         """Compose a dashboard plan.
 
         Args:
             classification: ClassificationResult from Agent 2
             insights: InsightReport from Agent 3
+            feature_plan: FeaturePlan from Agent 3.5 (optional)
 
         Returns:
             DashboardPlan with pages and sections
         """
-        prompt = self._build_prompt(classification, insights)
+        prompt = self._build_prompt(classification, insights, feature_plan)
         messages = [
             {
                 "role": "system",
@@ -148,6 +150,7 @@ class DashboardComposer:
         self,
         classification: ClassificationResult,
         insights: InsightReport,
+        feature_plan: "FeaturePlan | None" = None,
     ) -> str:
         """Build the composition prompt."""
         archetype = classification.archetype
@@ -167,6 +170,15 @@ class DashboardComposer:
         ])
         for ins in insights.insights:
             prompt_lines.append(f"  [{ins.type}] {ins.table}.{ins.col}: {ins.finding} (priority {ins.priority})")
+
+        if feature_plan and feature_plan.features:
+            prompt_lines.extend([
+                "",
+                "Colonnes dérivées disponibles (créées par FeatureEngineer) :",
+            ])
+            for f in feature_plan.features:
+                table_id = classification.table_mapping.get(f.table, f.table)
+                prompt_lines.append(f"  {table_id}.{f.col_id} ({f.type}) : {f.label}")
 
         prompt_lines.extend([
             "",
