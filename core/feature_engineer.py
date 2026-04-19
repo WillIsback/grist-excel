@@ -21,6 +21,7 @@ from config import Settings
 from core.data_analyzer import DataProfile
 from core.debug_utils import debug_print
 from core.domain_classifier import ClassificationResult
+from core.grist_api import GristAPI
 from core.insight_extractor import InsightReport
 
 logger = logging.getLogger(__name__)
@@ -222,7 +223,7 @@ class FeatureEngineer:
             columns_payload = [{
                 "id": feature.col_id,
                 "fields": {
-                    "type": feature.type,
+                    "type": GristAPI.normalize_grist_type(feature.type),
                     "label": feature.label,
                     "formula": formula,
                     "isFormula": True,
