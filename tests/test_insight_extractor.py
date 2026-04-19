@@ -2,6 +2,7 @@
 import json
 import pytest
 from pydantic import ValidationError
+from unittest.mock import patch
 from core.data_analyzer import DataProfile
 from core.domain_classifier import ClassificationResult
 from core.insight_extractor import InsightReport, InsightExtractor, VALID_INSIGHT_TYPES
@@ -128,3 +129,58 @@ class TestInsightExtractor:
         prompt_text = " ".join(m.get("content", "") for m in received)
         assert "Salaire" in prompt_text
         assert "min" in prompt_text
+
+
+def test_extract_injects_user_intent_into_system_prompt():
+    from core.insight_extractor import InsightExtractor
+    from core.data_analyzer import DataProfile
+    import json as _json
+
+    profile = DataProfile.from_json(SAMPLE_PROFILE_JSON)
+    classification = ClassificationResult(
+        archetype="HR", confidence=0.9,
+        table_mapping={"employees": "Employes"}, params={},
+    )
+    extractor = InsightExtractor()
+    mock_return = {
+        "insights": [{"type": "distribution", "table": "Employes", "col": "Departement",
+                      "finding": "test", "priority": 1}]
+    }
+    captured_messages = []
+
+    def fake_call_llm(messages, schema=None, _retry=False):
+        captured_messages.extend(messages)
+        return mock_return
+
+    with patch.object(extractor, "_call_llm", side_effect=fake_call_llm):
+        extractor.extract(profile, classification, user_intent="pourquoi le turnover est élevé")
+
+    system_msg = captured_messages[0]["content"]
+    assert "pourquoi le turnover est élevé" in system_msg
+
+
+def test_extract_no_intent_unchanged_behavior():
+    from core.insight_extractor import InsightExtractor
+    from core.data_analyzer import DataProfile
+
+    profile = DataProfile.from_json(SAMPLE_PROFILE_JSON)
+    classification = ClassificationResult(
+        archetype="HR", confidence=0.9,
+        table_mapping={"employees": "Employes"}, params={},
+    )
+    extractor = InsightExtractor()
+    mock_return = {
+        "insights": [{"type": "kpi", "table": "Employes", "col": "Salaire",
+                      "finding": "test", "priority": 1}]
+    }
+    captured_messages = []
+
+    def fake_call_llm(messages, schema=None, _retry=False):
+        captured_messages.extend(messages)
+        return mock_return
+
+    with patch.object(extractor, "_call_llm", side_effect=fake_call_llm):
+        extractor.extract(profile, classification, user_intent=None)
+
+    system_msg = captured_messages[0]["content"]
+    assert "FOCUS" not in system_msg

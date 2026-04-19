@@ -79,31 +79,25 @@ class InsightExtractor:
         self,
         profile: DataProfile,
         classification: ClassificationResult,
+        user_intent: str | None = None,
     ) -> InsightReport:
-        """Extract business insights from the data.
-
-        Args:
-            profile: DataProfile from Agent 1
-            classification: ClassificationResult from Agent 2
-
-        Returns:
-            InsightReport with up to 5 insights
-        """
         prompt = self._build_prompt(profile, classification)
+        system_content = (
+            "Vous êtes un analyste de données métier. "
+            "Extrayez maximum 5 insights pertinents du profil de données. "
+            "Pour chaque insight, indiquez le type, la table, la colonne concernée, "
+            "et un résumé du résultat en français. "
+            "RÉPONDEZ UNIQUEMENT en JSON valide selon le schéma demandé."
+        )
+        if user_intent:
+            system_content += (
+                f"\n\nFOCUS EXCLUSIF sur la question de l'utilisateur : {user_intent}"
+                "\nIgnorez les insights non liés à cette question."
+            )
         messages = [
-            {
-                "role": "system",
-                "content": (
-                    "Vous êtes un analyste de données métier. "
-                    "Extrayez maximum 5 insights pertinents du profil de données. "
-                    "Pour chaque insight, indiquez le type, la table, la colonne concernée, "
-                    "et un résumé du résultat en français. "
-                    "RÉPONDEZ UNIQUEMENT en JSON valide selon le schéma demandé."
-                ),
-            },
+            {"role": "system", "content": system_content},
             {"role": "user", "content": prompt},
         ]
-
         return InsightReport(**self._call_llm(messages))
 
     def _build_prompt(
