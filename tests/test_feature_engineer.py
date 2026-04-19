@@ -1,5 +1,6 @@
 from core.feature_engineer import FeaturePlan, FormulaColumn
 import pytest
+from pydantic import ValidationError
 
 
 def test_feature_plan_valid():
@@ -22,5 +23,5 @@ def test_feature_plan_empty():
 
 
 def test_formula_column_requires_all_fields():
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         FormulaColumn(table="employees", col_id="x")  # missing label, type, formula
