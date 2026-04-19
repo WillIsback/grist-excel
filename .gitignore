@@ -42,3 +42,6 @@ Thumbs.db
 
 # Grist local data
 grist_data/
+
+# Git worktrees
+.worktrees/
