@@ -4,6 +4,8 @@ Date: 2026-04-18
 Grist server: http://localhost:8484
 Test doc ID: new~qRyhQop9BSUjmwvRYUjwBY~5 (fresh upload of samples/employees_rh.xlsx)
 
+Related reading: [docs/visual-intents-and-official-widgets.md](visual-intents-and-official-widgets.md)
+
 ---
 
 ## tableRef resolution
@@ -30,7 +32,7 @@ INCORRECT: {"actions": [["AddRecord", "TableName", null, {fields}], ...]}
 
 The wrapped format returns: `{"error": "\`actions\` parameter should be an array."}`
 
-**Bug in codebase**: `core/grist_api.py` method `apply_actions()` currently uses the wrong format (`json={"actions": actions}`). This must be fixed to `json=actions`.
+Implementation note: `core/grist_api.py` method `apply_actions()` now sends the correct bare array format with `json=actions`.
 
 ---
 
@@ -263,6 +265,10 @@ api.apply_actions(doc_id, [
 
 Note: Template back-references (e.g. `{{retValues[0]}}`) in field values do NOT work — they are stored as literal strings. Multi-step creation requires sequential API calls.
 
+  ## See also
+
+  - [docs/visual-intents-and-official-widgets.md](visual-intents-and-official-widgets.md) for the higher-level widget materialization flow.
+
 ---
 
 ## All fields in _grist_Views_section
@@ -289,7 +295,7 @@ linkSrcSectionRef, linkSrcColRef, linkTargetColRef, embedId, rules, shareOptions
 | `parentKey` for table | `"primary"` | `"record"` | CRITICAL — wrong value |
 | `parentKey` for card list | `"primary"` | `"detail"` | CRITICAL — wrong value |
 | `_grist_Pages` entry | Not mentioned in plan steps | Required for page to appear in left panel | Important |
-| `apply_actions()` in grist_api.py | Uses `json={"actions": actions}` | Must be `json=actions` | BUG in existing code |
+| `apply_actions()` in grist_api.py | Used `json={"actions": actions}` | Now uses `json=actions` | Fixed |
 | Template back-refs (`{{retValues[0]}}`) | Not attempted | Do not work — stored as literal string | Multi-step calls required |
 
 ---

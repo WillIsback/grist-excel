@@ -1,65 +1,90 @@
 # Grist Excel to Application Converter
 
-Automatically transforms Excel files into fully configured Grist applications with dashboards, forms, and charts — powered by local LLM inference.
+Convertit un fichier Excel en document Grist enrichi avec analyse métier, pages de synthèse, widgets standards et widgets officiels Grist, en s'appuyant sur un pipeline LLM local.
 
-## Overview
+## Vue d'ensemble
 
-Upload an Excel spreadsheet and receive a ready-to-use Grist document with:
+Le pipeline prend un classeur Excel et produit:
 
-- **Smart schema inference** — column types, relationships, and constraints
-- **Business insight extraction** — anomalies, distributions, correlations
-- **Dashboard generation** — archetype-aware layouts (HR, analytics, project management, etc.)
-- **Interactive widgets** — charts, card views, forms, calendars
+- une analyse structurée des feuilles, colonnes et statistiques;
+- une classification d'archetype métier;
+- des insights métier et un plan de colonnes dérivées;
+- un plan de dashboard combinant sections classiques et intentions visuelles déterministes;
+- un document Grist prêt à l'emploi.
+
+Exemples:
 
 ```bash
-python main.py --input employees_rh.xlsx
-python main.py --input sales_2024.xlsx --dry-run
-python main.py --input data.xlsx --output ./results/
+uv run python main.py --input samples/employees_rh.xlsx
+uv run python main.py --input samples/demo_data.xlsx --dry-run
+uv run python main.py --input samples/sites_geo_validation.xlsx --debug
 ```
+
+## Ce que le projet génère aujourd'hui
+
+- pages Grist standards: table, chart, card list, form;
+- tables de synthèse précalculées pour remplacer les anciennes matrices de corrélation;
+- une page unique Syntheses croisees pour éviter la prolifération de pages;
+- widgets officiels Grist matérialisés quand le contexte le justifie:
+  - Advanced Charts;
+  - Map;
+  - Markdown.
+
+La sélection des visualisations premium n'est pas codée par domaine métier. Elle est dérivée de l'analyse du classeur via un résolveur d'intentions visuelles générique.
 
 ## Architecture
 
-```
+```text
 Excel File
-    │
-    ▼
-[Data Analyzer]     Parse sheets, infer types, extract samples
-    │
-    ▼
-[Domain Classifier] Match to archetype (HR, finance, project, …)
-    │
-    ▼
-[Insight Extractor] Statistical analysis + LLM-powered insights
-    │
-    ▼
-[Dashboard Composer] Generate page/widget plan
-    │
-    ▼
-[Grist Importer]    Upload raw data to Grist via API
-    │
-    ▼
-[Archetype Engine]  Apply template widgets, charts, forms
-    │
-    ▼
+    |
+    v
+[Data Analyzer]         Profil du classeur, stats, tables de synthèse
+    |
+    v
+[Domain Classifier]     Archetype métier + table mapping
+    |
+    v
+[Insight Extractor]     Insights statistiques et narratifs
+    |
+    v
+[Feature Engineer]      Plan de colonnes dérivées
+    |
+    v
+[VisualIntentResolver]  Intentions visuelles déterministes
+    |
+    v
+[Dashboard Composer]    DashboardPlan + page Syntheses croisees
+    |
+    v
+[Reflexion Validator]   Validation et nettoyage du plan
+    |
+    v
+[Grist Importer]        Import Excel + tables de synthèse dans Grist
+    |
+    v
+[Archetype Engine]      Pages, charts, forms et widgets officiels
+    |
+    v
 Grist Document
 ```
 
-### LLM Backend
+## Backend LLM
 
-Uses a local vLLM instance (e.g. `Qwen3.6-35B-A3B-FP8`) for all inference. No external API calls — fully self-hosted.
+Le projet utilise un backend vLLM local compatible OpenAI. La configuration validée actuellement est basée sur Qwen/Qwen3.6-35B-A3B-FP8. Aucune API externe n'est requise pour l'inférence.
 
-## Setup
+Voir [API_REFERENCE.md](API_REFERENCE.md) pour la référence vLLM détaillée.
 
-### Prerequisites
+## Installation
 
-- Python 3.11+
-- Local vLLM server running (default: `http://172.17.0.1:30000`)
-- Grist instance running (default: `http://localhost:8484`)
+### Prérequis
 
-### Installation
+- Python 3.11+;
+- une instance vLLM disponible sur l'URL configurée;
+- une instance Grist disponible sur l'URL configurée.
+
+### Environnement Python
 
 ```bash
-cd grist-excel
 uv venv
 source .venv/bin/activate
 uv pip install -r requirements.txt
@@ -67,130 +92,158 @@ uv pip install -r requirements.txt
 
 ### Configuration
 
-Copy the example env file and adjust values:
+Le projet charge ses paramètres depuis l'environnement et, si présent, depuis `.env`.
 
-```bash
-cp .env.example .env   # if provided, otherwise create manually
-```
+Variables les plus utiles:
 
-Required environment variables:
-
-| Variable | Default | Description |
+| Variable | Défaut | Description |
 |---|---|---|
-| `VLLM_BASE_URL` | `http://172.17.0.1:30000` | Local vLLM inference endpoint |
-| `VLLM_MODEL` | `Qwen/Qwen3.6-35B-A3B-FP8` | Model identifier |
-| `GRIST_SERVER` | `http://localhost:8484` | Grist instance URL |
-| `GRIST_API_KEY` | *(empty)* | Grist API key from Profile Settings |
-| `GRIST_DOC_ID` | *(empty)* | Target document ID |
+| `VLLM_BASE_URL` | `http://172.17.0.1:30000` | Endpoint vLLM |
+| `VLLM_MODEL` | `Qwen/Qwen3.6-35B-A3B-FP8` | Modèle utilisé pour le pipeline |
+| `VLLM_TIMEOUT` | `300` | Timeout LLM en secondes |
+| `GRIST_SERVER` | `http://localhost:8484` | URL du serveur Grist |
+| `GRIST_API_KEY` | vide | Clé API Grist |
+| `API_TIMEOUT` | `30` | Timeout HTTP général |
+| `DEBUG` | `True` | Active les sorties debug détaillées |
+| `CORRELATION_SUMMARY_MAX_TABLES` | `4` | Limite de tables de synthèse de corrélation |
+| `CORRELATION_SUMMARY_MAX_GROUPS` | `25` | Limite de groupes par synthèse |
 
-## Usage
+## Utilisation
 
-### Basic pipeline
-
-```bash
-python main.py --input samples/demo_data.xlsx
-```
-
-### Dry run (no Grist creation)
+### Exécution complète
 
 ```bash
-python main.py --input samples/demo_data.xlsx --dry-run
+uv run python main.py --input samples/employees_rh.xlsx
 ```
 
-Outputs the dashboard plan as JSON without touching Grist.
+Sorties principales:
 
-### Debug mode
+- un document Grist créé sur le serveur cible;
+- un fichier `output/pipeline_result.json` contenant le résultat du pipeline.
+
+### Dry run
 
 ```bash
-python main.py --input samples/demo_data.xlsx --debug
+uv run python main.py --input samples/demo_data.xlsx --dry-run
 ```
 
-Prints JSON output from each pipeline agent step.
+Affiche le DashboardPlan JSON sans créer de document Grist.
 
-### Custom output directory
+### Mode debug
 
 ```bash
-python main.py --input data.xlsx --output ./results/
+uv run python main.py --input samples/sites_geo_validation.xlsx --debug
 ```
 
-## Project Structure
+Active l'affichage JSON détaillé des étapes du pipeline et des payloads utiles au diagnostic, notamment côté FeatureEngineer.
 
+### Dossier de sortie personnalisé
+
+```bash
+uv run python main.py --input samples/demo_data.xlsx --output ./results
 ```
+
+## Jeux de données inclus
+
+Le dossier `samples/` contient des classeurs utiles pour les validations locales:
+
+- `sample_employees.xlsx`: cas simple de démonstration;
+- `employees_rh.xlsx`: scénario RH complet;
+- `demo_data.xlsx`: scénario générique;
+- `sites_geo_validation.xlsx`: validation de la page carte.
+
+Voir [TEST_DATA_GUIDE.md](TEST_DATA_GUIDE.md) pour les scénarios de test détaillés.
+
+## Structure du projet
+
+```text
 grist-excel/
-├── main.py                  # CLI entry point
-├── config.py                # Settings (pydantic, env-based)
+├── main.py
+├── config.py
 ├── requirements.txt
-├── .env                     # ← NEVER commit (contains API keys)
-│
-├── core/                    # Pipeline stages
+├── core/
+│   ├── archetype_engine.py
+│   ├── dashboard_composer.py
 │   ├── data_analyzer.py
 │   ├── domain_classifier.py
-│   ├── insight_extractor.py
-│   ├── dashboard_composer.py
+│   ├── feature_engineer.py
 │   ├── grist_api.py
 │   ├── grist_importer.py
-│   ├── archetype_engine.py
-│   └── pipeline.py
-│
-├── archetypes/              # Domain-specific templates
-│   ├── base.py
-│   ├── hr.py
-│   ├── decisionnel.py
-│   ├── project.py
-│   ├── student.py
-│   ├── si.py
-│   └── support.py
-│
-├── prompts/                 # LLM prompt templates (versioned)
-│   ├── domain_classifier_v*.md
-│   ├── data_analyzer_v*.md
-│   ├── insight_extractor_v*.md
-│   └── dashboard_composer_v*.md
-│
-├── templates/widgets/       # Grist widget JSON templates
-├── samples/                 # Demo files (gitignored)
-├── tests/                   # pytest suite
-├── output/                  # Generated artifacts (gitignored)
-└── docs/
+│   ├── insight_extractor.py
+│   ├── pipeline.py
+│   ├── reflexion.py
+│   └── visual_intents.py
+├── archetypes/
+├── prompts/
+├── templates/widgets/
+├── samples/
+├── tests/
+├── docs/
+└── output/
 ```
 
-## Archetypes
+## Notes d'implémentation Grist
 
-The domain classifier maps input data to one of several archetypes, each with pre-built widget templates:
+- les tables de synthèse sont importées comme vraies tables Grist, mais leurs pages raw auto-créées sont masquées;
+- la page utilisateur visible reste Syntheses croisees;
+- les widgets officiels sont stockés comme sections custom avec `options.customView` sérialisé en JSON imbriqué;
+- les `columnsMapping` des widgets officiels doivent être persistés avec des `colRef` numériques, pas des noms de colonnes.
 
-| Archetype | Description | Typical Widgets |
-|---|---|---|
-| `hr` | Employee/HR data | Org chart, headcount cards, leave tracker |
-| `decisionnel` | Business intelligence | KPI dashboards, trend charts |
-| `project` | Project management | Gantt views, task boards |
-| `student` | Academic data | Grade trackers, schedules |
-| `si` | IT/service desk | Ticket queues, SLA monitors |
-| `support` | Customer support | Ticket views, satisfaction scores |
-| `generic` | Fallback | Basic table + summary |
+Voir aussi [docs/visual-intents-and-official-widgets.md](docs/visual-intents-and-official-widgets.md) pour le détail du flux de matérialisation.
 
-## Security Notes
+## Limites connues
 
-- **Never commit `.env`** — it contains your Grist API key
-- **Never commit `output/`** — contains generated `.grist` documents and credential files
-- **Sample Excel files are gitignored** — they may contain sensitive personnel data
-- All LLM inference runs locally via vLLM — no data leaves your machine
+- certaines formules générées automatiquement peuvent encore échouer selon la qualité ou l'ambiguïté du classeur source;
+- les line charts sont filtrés si un axe requis manque, afin d'éviter des sections invalides dans Grist;
+- la carte n'est proposée que si des colonnes latitude/longitude exploitables sont détectées.
 
-## Development
+### Known issues
 
-### Running tests
+#### Formules dérivées sur certains classeurs RH
+
+Le point encore le plus fragile concerne les colonnes générées par `FeatureEngineer` sur certains classeurs RH.
+
+- le plan de features peut être valide côté LLM mais produire une formule Grist rejetée par l'API;
+- les erreurs apparaissent typiquement en HTTP 400 au moment de `add_columns()`;
+- les causes probables sont des références de tables ou de colonnes insuffisamment robustes dans les formules générées;
+- le pipeline continue malgré ces échecs partiels et journalise les colonnes appliquées et échouées.
+
+Pour diagnostiquer:
 
 ```bash
-uv pip install -r requirements.txt
-pytest
+uv run python main.py --input samples/employees_rh.xlsx --debug
 ```
 
-### Adding a new archetype
+Le mode debug affiche les payloads envoyés pour l'ajout de colonnes, ce qui permet d'isoler rapidement la formule fautive.
 
-1. Create `archetypes/my_domain.py` inheriting from `BaseArchetype`
-2. Register it in `archetypes/__init__.py`
-3. Add prompt templates in `prompts/`
-4. Add widget templates in `templates/widgets/`
+## Développement
 
-## License
+### Lancer les tests
 
-Private / Internal use.
+```bash
+uv run pytest
+```
+
+### Tests ciblés utiles
+
+```bash
+uv run pytest tests/test_visual_intents.py tests/test_dashboard_composer.py
+uv run pytest tests/test_archetype_engine.py tests/test_grist_importer.py
+```
+
+### Ajouter un nouvel archetype
+
+1. Créer un module dans `archetypes/` qui hérite de `BaseArchetype`.
+2. L'enregistrer dans le moteur d'archetypes.
+3. Ajouter ou ajuster les prompts si nécessaire.
+4. Ajouter les tests couvrant le rendu visuel attendu.
+
+## Sécurité
+
+- ne pas versionner `.env` ni des secrets Grist;
+- ne pas versionner les documents `.grist` générés ni les credentials de sortie;
+- considérer les fichiers Excel de test comme potentiellement sensibles.
+
+## Licence
+
+Usage privé / interne.
