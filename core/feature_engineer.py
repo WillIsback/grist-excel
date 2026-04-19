@@ -12,6 +12,7 @@ import json
 import logging
 import re
 import requests
+import unicodedata
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -23,6 +24,16 @@ from core.domain_classifier import ClassificationResult
 from core.insight_extractor import InsightReport
 
 logger = logging.getLogger(__name__)
+
+
+def _safe_table_id(name: str) -> str:
+    """Mirror of grist_importer._safe_table_id — accent-strip + space-to-underscore."""
+    nfkd = unicodedata.normalize("NFKD", name)
+    normalized = "".join(c for c in nfkd if not unicodedata.combining(c))
+    normalized = re.sub(r"\s+", "_", normalized)
+    if not normalized or normalized[0].isdigit():
+        normalized = "Table_" + normalized
+    return normalized
 
 
 class FormulaColumn(BaseModel):
@@ -126,9 +137,9 @@ class FeatureEngineer:
         for ins in insights.insights:
             lines.append(f"  [{ins.type}] {ins.table}.{ins.col}: {ins.finding}")
 
-        lines.extend(["", "Noms EXACTS des tables Grist à utiliser dans les formules :"])
+        lines.extend(["", "Noms EXACTS des tables Grist à utiliser dans les formules (ASCII, sans accents) :"])
         for role, table_name in classification.table_mapping.items():
-            lines.append(f"  {role} → '{table_name}' (accents inclus)")
+            lines.append(f"  {role} → '{_safe_table_id(table_name)}'  (NE PAS utiliser '{role}' ni '{table_name}')")
 
         lines.extend([
             "",
@@ -200,13 +211,20 @@ class FeatureEngineer:
         failed: list[str] = []
 
         for feature in plan.features:
-            table_id = table_mapping.get(feature.table, feature.table)
+            raw_table_name = table_mapping.get(feature.table, feature.table)
+            table_id = _safe_table_id(raw_table_name)
+            # Rewrite any semantic key used as table ref in formula to the safe Grist table ID
+            formula = feature.formula
+            for role, sheet_name in table_mapping.items():
+                safe_id = _safe_table_id(sheet_name)
+                # Replace exact role name used as table ref (word boundary)
+                formula = re.sub(rf"\b{re.escape(role)}\b", safe_id, formula)
             columns_payload = [{
                 "id": feature.col_id,
                 "fields": {
                     "type": feature.type,
                     "label": feature.label,
-                    "formula": feature.formula,
+                    "formula": formula,
                     "isFormula": True,
                 },
             }]
