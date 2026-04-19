@@ -12,7 +12,6 @@ import json
 import logging
 import re
 import requests
-from typing import Any
 
 from pydantic import BaseModel
 

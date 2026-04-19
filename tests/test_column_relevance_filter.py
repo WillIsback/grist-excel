@@ -1,4 +1,7 @@
 # tests/test_column_relevance_filter.py
+from unittest.mock import patch
+from core.column_relevance_filter import ColumnRelevanceFilter
+from core.data_analyzer import DataProfile
 from config import Settings
 
 
@@ -7,13 +10,6 @@ def test_relevance_settings_defaults():
     assert s.RELEVANCE_UPPER == 0.6
     assert s.RELEVANCE_LOWER == 0.25
     assert s.RELEVANCE_MIN_COLUMNS == 5
-
-
-import dataclasses
-from unittest.mock import patch
-from core.column_relevance_filter import ColumnRelevanceFilter
-from core.data_analyzer import DataProfile
-from config import Settings
 
 
 def _make_profile():
