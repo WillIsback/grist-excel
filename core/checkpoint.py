@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
 from pydantic import BaseModel
 
-from core.domain_classifier import ArchetypeLiteral
+from core.domain_classifier import ARCHETYPE_CHOICES, ArchetypeLiteral
 
 if TYPE_CHECKING:
     from core.data_analyzer import DataProfile
@@ -33,9 +33,6 @@ class CheckpointHandler(Protocol):
     def on_insights(
         self, report: "InsightReport", profile: "DataProfile"
     ) -> InsightFeedback: ...
-
-
-ARCHETYPE_CHOICES = ["HR", "DECISIONNEL", "SUPPORT", "STUDENT", "SI", "PROJECT", "GENERIC"]
 
 
 class CLICheckpointHandler:

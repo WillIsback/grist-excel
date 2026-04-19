@@ -1,6 +1,9 @@
 import pytest
 from pydantic import ValidationError
-from core.checkpoint import ClassificationFeedback, InsightFeedback
+from core.checkpoint import ClassificationFeedback, InsightFeedback, CLICheckpointHandler, CheckpointHandler
+from core.data_analyzer import DataProfile
+from core.domain_classifier import ClassificationResult
+from core.insight_extractor import InsightReport, InsightEntry
 
 
 def test_classification_feedback_valid():
@@ -28,12 +31,6 @@ def test_insight_feedback_valid():
 def test_insight_feedback_with_focus():
     fb = InsightFeedback(selected_indices=[1], custom_focus="analyse par ancienneté")
     assert fb.custom_focus == "analyse par ancienneté"
-
-
-from core.checkpoint import CLICheckpointHandler, CheckpointHandler
-from core.data_analyzer import DataProfile
-from core.domain_classifier import ClassificationResult
-from core.insight_extractor import InsightReport, InsightEntry
 
 
 def _make_profile():
