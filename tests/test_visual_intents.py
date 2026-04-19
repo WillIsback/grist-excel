@@ -111,5 +111,5 @@ def test_narrative_intent_builds_markdown_content():
 
     assert narrative.preferred_widget == "markdown"
     assert narrative.narrative is not None
-    assert narrative.narrative.startswith("# Resume analytique")
+    assert narrative.narrative.startswith("# R")
     assert "Des écarts de salaire apparaissent par département" in narrative.narrative

@@ -103,12 +103,13 @@ class VisualIntentResolver:
         profile: DataProfile,
         classification: ClassificationResult,
         insights: InsightReport,
+        narrative: str | None = None,
     ) -> VisualIntentPlan:
         intents: list[VisualIntent] = []
         intents.extend(self._build_cross_tab_intents(profile, insights))
         intents.extend(self._build_trend_intents(insights, profile))
         intents.extend(self._build_geo_intents(profile))
-        intents.extend(self._build_narrative_intents(insights))
+        intents.extend(self._build_narrative_intents(insights, narrative=narrative))
         intents.extend(self._build_entity_detail_intents(classification))
         promoted_index, promoted_widget = self._select_promoted_premium_intent(intents)
         return VisualIntentPlan(
@@ -377,22 +378,26 @@ class VisualIntentResolver:
             )
         return intents
 
-    def _build_narrative_intents(self, insights: InsightReport) -> list[VisualIntent]:
+    def _build_narrative_intents(
+        self,
+        insights: InsightReport,
+        narrative: str | None = None,
+    ) -> list[VisualIntent]:
         if not insights.insights:
             return []
 
-        ranked_pairs = sorted(
-            enumerate(insights.insights),
-            key=lambda pair: pair[1].priority,
-        )[:2]
-        top_indices = [idx for idx, _ in ranked_pairs]
-        top_insights = [insight for _, insight in ranked_pairs]
+        all_indices = list(range(len(insights.insights)))
+        primary_table = insights.insights[0].table
+        all_cols = [ins.col for ins in insights.insights]
+
+        content = narrative if narrative else self._build_fallback_narrative(insights.insights)
+
         return [
             VisualIntent(
                 kind="narrative",
-                source_table=top_insights[0].table,
-                source_columns=[ins.col for ins in top_insights],
-                insight_refs=top_indices,
+                source_table=primary_table,
+                source_columns=all_cols,
+                insight_refs=all_indices,
                 priority=0.7,
                 confidence=0.75,
                 presentation="narrative_block",
@@ -400,7 +405,7 @@ class VisualIntentResolver:
                 premium_widgets=["markdown"],
                 preferred_widget="markdown",
                 title="Resume analytique",
-                narrative=self._build_markdown_narrative(top_insights),
+                narrative=content,
                 metadata={
                     "content_column": "Content",
                     "table_name": "Narrative_Summary",
@@ -408,10 +413,10 @@ class VisualIntentResolver:
             )
         ]
 
-    def _build_markdown_narrative(self, insights: list[Any]) -> str:
-        lines = ["# Resume analytique", ""]
-        for insight in insights:
-            lines.append(f"- **{insight.table} / {insight.col}**: {insight.finding}")
+    def _build_fallback_narrative(self, insights: list[Any]) -> str:
+        lines = ["# Résumé analytique", ""]
+        for insight in sorted(insights, key=lambda i: i.priority):
+            lines.append(f"- **{insight.table} / {insight.col}** : {insight.finding}")
         return "\n".join(lines)
 
     def _build_entity_detail_intents(

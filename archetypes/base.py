@@ -408,6 +408,29 @@ class BaseArchetype(ABC):
         ])
         api.add_records(doc_id, table_id, [{column_id: content}])
 
+    def _hide_backing_table_page(self, api: GristAPI, doc_id: str, table_id: str) -> None:
+        """Remove the auto-created raw page for a backing table, keeping the table intact."""
+        try:
+            views = api.get_records(doc_id, "_grist_Views")
+            pages = api.get_records(doc_id, "_grist_Pages")
+            tabs = api.get_records(doc_id, "_grist_TabBar")
+            target_view_ids = {
+                v["id"] for v in views if v.get("fields", {}).get("name") == table_id
+            }
+            if not target_view_ids:
+                return
+            actions = []
+            for page in pages:
+                if page.get("fields", {}).get("viewRef") in target_view_ids:
+                    actions.append(["RemoveRecord", "_grist_Pages", page["id"]])
+            for tab in tabs:
+                if tab.get("fields", {}).get("viewRef") in target_view_ids:
+                    actions.append(["RemoveRecord", "_grist_TabBar", tab["id"]])
+            if actions:
+                api.apply_actions(doc_id, actions)
+        except Exception:
+            pass  # non-fatal: cosmetic cleanup only
+
     def _add_geo_widget_page(
         self,
         api: GristAPI,
@@ -447,6 +470,7 @@ class BaseArchetype(ABC):
         table_id = intent.metadata.get("table_name", "Narrative_Summary")
         column_id = intent.metadata.get("content_column", "Content")
         self._create_text_table(api, doc_id, table_id, column_id, content)
+        self._hide_backing_table_page(api, doc_id, table_id)
         fresh_resolver = GristTableResolver(api, doc_id)
         table_ref = fresh_resolver.get_ref(table_id)
         widget_def = api.get_widget(OFFICIAL_WIDGET_IDS["markdown"])

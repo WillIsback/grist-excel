@@ -28,6 +28,7 @@ from core.reflexion import ReflexionValidator
 from core.visual_intents import VisualIntentPlan, VisualIntentResolver
 from core.checkpoint import CheckpointHandler, ClassificationFeedback, InsightFeedback
 from core.column_relevance_filter import ColumnRelevanceFilter
+from core.narrative_generator import NarrativeGenerator
 from core.debug_utils import debug_print
 from config import Settings
 
@@ -40,6 +41,7 @@ class PipelineResult:
     classification: ClassificationResult | None = None
     insights: InsightReport | None = None
     feature_plan: FeaturePlan | None = None
+    narrative: str | None = None
     visual_intents: VisualIntentPlan | None = None
     dashboard_plan: DashboardPlan | None = None
     errors: list[str] = field(default_factory=list)
@@ -89,6 +91,7 @@ class PipelineOrchestrator:
         self.visual_intent_resolver = VisualIntentResolver()
         self.checkpoint_handler = checkpoint_handler
         self.relevance_filter = ColumnRelevanceFilter(settings)
+        self.narrative_generator = NarrativeGenerator(settings)
 
     def run(self, profile: DataProfile) -> PipelineResult:
         result = PipelineResult()
@@ -170,10 +173,23 @@ class PipelineOrchestrator:
                 result.errors.append(f"FeatureEngineer failed: {e}")
                 result.feature_plan = FeaturePlan(features=[])
 
+        # Agent 3.6: Narrative Generation
+        if result.classification is not None and result.insights is not None:
+            try:
+                result.narrative = self.narrative_generator.generate(
+                    profile, result.classification, result.insights,
+                    feature_plan=result.feature_plan,
+                    user_intent=user_intent or None,
+                )
+                debug_print("Agent 3.6 — NarrativeGenerator", {"chars": len(result.narrative)}, self.debug)
+            except Exception as e:
+                result.errors.append(f"NarrativeGenerator failed: {e}")
+
         if result.classification is not None and result.insights is not None:
             try:
                 result.visual_intents = self._resolve_visual_intents(
                     profile, result.classification, result.insights,
+                    narrative=result.narrative,
                 )
                 debug_print("VisualIntentResolver", result.visual_intents, self.debug)
             except Exception as e:
@@ -269,6 +285,7 @@ class PipelineOrchestrator:
         profile: DataProfile,
         classification: ClassificationResult,
         insights: InsightReport,
+        narrative: str | None = None,
     ) -> VisualIntentPlan:
         """Resolve deterministic visual intents from existing pipeline outputs."""
-        return self.visual_intent_resolver.resolve(profile, classification, insights)
+        return self.visual_intent_resolver.resolve(profile, classification, insights, narrative=narrative)

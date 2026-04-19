@@ -190,21 +190,27 @@ class TestGenericArchetype:
 
     def test_materializes_geo_and_markdown_widget_pages(self, mock_api, classification):
         mock_api.get_records.side_effect = [
-            [
-                {"id": 1, "fields": {"tableId": "Sites"}},
-            ],
+            # GristTableResolver for map: tables
+            [{"id": 1, "fields": {"tableId": "Sites"}}],
+            # GristTableResolver for map: columns
             [
                 {"id": 11, "fields": {"parentId": 1, "colId": "Nom"}},
                 {"id": 12, "fields": {"parentId": 1, "colId": "Latitude"}},
                 {"id": 13, "fields": {"parentId": 1, "colId": "Longitude"}},
             ],
+            # _hide_backing_table_page: _grist_Views
+            [{"id": 5, "fields": {"name": "Narrative_Summary"}}],
+            # _hide_backing_table_page: _grist_Pages
+            [{"id": 6, "fields": {"viewRef": 5}}],
+            # _hide_backing_table_page: _grist_TabBar
+            [{"id": 7, "fields": {"viewRef": 5}}],
+            # fresh_resolver for markdown: tables
             [
                 {"id": 1, "fields": {"tableId": "Sites"}},
                 {"id": 2, "fields": {"tableId": "Narrative_Summary"}},
             ],
-            [
-                {"id": 21, "fields": {"parentId": 2, "colId": "Content"}},
-            ],
+            # fresh_resolver for markdown: columns
+            [{"id": 21, "fields": {"parentId": 2, "colId": "Content"}}],
         ]
         mock_api.get_widget.side_effect = [
             {
