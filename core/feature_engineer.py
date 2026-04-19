@@ -173,3 +173,35 @@ class FeatureEngineer:
                 )},
             ]
             return self._call_llm(stricter, schema=effective_schema, _retry=True)
+
+    def apply(
+        self,
+        api: Any,
+        doc_id: str,
+        plan: FeaturePlan,
+        table_mapping: dict[str, str],
+    ) -> tuple[list[str], list[str]]:
+        """Write formula columns from FeaturePlan to a live Grist document."""
+        applied: list[str] = []
+        failed: list[str] = []
+
+        for feature in plan.features:
+            table_id = table_mapping.get(feature.table, feature.table)
+            try:
+                api.patch_columns(doc_id, table_id, [{
+                    "id": feature.col_id,
+                    "fields": {
+                        "type": feature.type,
+                        "label": feature.label,
+                        "formula": feature.formula,
+                        "isFormula": True,
+                    },
+                }])
+                api.get_records(doc_id, table_id)
+                applied.append(feature.col_id)
+                logger.info("Feature column applied: %s.%s", table_id, feature.col_id)
+            except Exception as exc:
+                logger.warning("Feature column failed: %s.%s — %s", table_id, feature.col_id, exc)
+                failed.append(feature.col_id)
+
+        return applied, failed

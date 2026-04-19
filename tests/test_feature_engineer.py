@@ -73,3 +73,58 @@ def test_feature_plan_empty():
 def test_formula_column_requires_all_fields():
     with pytest.raises(ValidationError):
         FormulaColumn(table="employees", col_id="x")  # missing label, type, formula
+
+
+def test_apply_patches_formula_column():
+    from core.grist_api import GristAPI
+
+    eng = FeatureEngineer()
+    api = MagicMock(spec=GristAPI)
+    api.get_records.return_value = []
+
+    plan = FeaturePlan(features=[
+        FormulaColumn(
+            table="employees",
+            col_id="nb_absences",
+            label="Nb Absences",
+            type="Int",
+            formula="len(Absences.lookupRecords(ID_Employe=$ID_Employe))",
+        )
+    ])
+    table_mapping = {"employees": "Employes"}
+
+    applied, failed = eng.apply(api, "doc123", plan, table_mapping)
+
+    api.patch_columns.assert_called_once_with(
+        "doc123",
+        "Employes",
+        [{
+            "id": "nb_absences",
+            "fields": {
+                "type": "Int",
+                "label": "Nb Absences",
+                "formula": "len(Absences.lookupRecords(ID_Employe=$ID_Employe))",
+                "isFormula": True,
+            },
+        }],
+    )
+    assert "nb_absences" in applied
+    assert failed == []
+
+
+def test_apply_skips_on_api_error():
+    from core.grist_api import GristAPI
+
+    eng = FeatureEngineer()
+    api = MagicMock(spec=GristAPI)
+    api.patch_columns.side_effect = Exception("API error")
+
+    plan = FeaturePlan(features=[
+        FormulaColumn(
+            table="employees", col_id="bad_col", label="Bad", type="Text", formula="$X"
+        )
+    ])
+    applied, failed = eng.apply(api, "doc123", plan, {"employees": "Employes"})
+
+    assert applied == []
+    assert "bad_col" in failed
