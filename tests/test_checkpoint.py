@@ -30,7 +30,6 @@ def test_insight_feedback_with_focus():
     assert fb.custom_focus == "analyse par ancienneté"
 
 
-from unittest.mock import patch, MagicMock
 from core.checkpoint import CLICheckpointHandler, CheckpointHandler
 from core.data_analyzer import DataProfile
 from core.domain_classifier import ClassificationResult

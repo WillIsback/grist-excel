@@ -2,7 +2,7 @@
 """Checkpoint handlers for interactive pipeline steering."""
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
 from pydantic import BaseModel
 
@@ -11,7 +11,7 @@ from core.domain_classifier import ArchetypeLiteral
 if TYPE_CHECKING:
     from core.data_analyzer import DataProfile
     from core.domain_classifier import ClassificationResult
-    from core.insight_extractor import InsightReport, InsightEntry
+    from core.insight_extractor import InsightReport
 
 
 class ClassificationFeedback(BaseModel):
@@ -63,7 +63,7 @@ class CLICheckpointHandler:
         user_intent = input("What do you want to analyze? (enter=skip): ").strip()
 
         return ClassificationFeedback(
-            confirmed_archetype=confirmed,
+            confirmed_archetype=cast(ArchetypeLiteral, confirmed),
             user_intent=user_intent,
         )
 
