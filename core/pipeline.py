@@ -25,6 +25,7 @@ from core.insight_extractor import InsightExtractor, InsightReport
 from core.dashboard_composer import DashboardComposer, DashboardPlan
 from core.feature_engineer import FeatureEngineer, FeaturePlan
 from core.reflexion import ReflexionValidator
+from core.visual_intents import VisualIntentPlan, VisualIntentResolver
 from core.debug_utils import debug_print
 from config import Settings
 
@@ -37,6 +38,7 @@ class PipelineResult:
     classification: ClassificationResult | None = None
     insights: InsightReport | None = None
     feature_plan: FeaturePlan | None = None
+    visual_intents: VisualIntentPlan | None = None
     dashboard_plan: DashboardPlan | None = None
     errors: list[str] = field(default_factory=list)
 
@@ -47,6 +49,7 @@ class PipelineResult:
             "classification": self.classification.model_dump() if self.classification else None,
             "insights": self.insights.model_dump() if self.insights else None,
             "feature_plan": self.feature_plan.model_dump() if self.feature_plan else None,
+            "visual_intents": self.visual_intents.model_dump() if self.visual_intents else None,
             "dashboard_plan": self.dashboard_plan.model_dump() if self.dashboard_plan else None,
             "errors": self.errors,
         }
@@ -81,6 +84,7 @@ class PipelineOrchestrator:
         self.insight_extractor = InsightExtractor(settings)
         self.composer = DashboardComposer(settings)
         self.feature_engineer = FeatureEngineer(settings)
+        self.visual_intent_resolver = VisualIntentResolver()
 
     def run(self, profile: DataProfile) -> PipelineResult:
         """Run the full pipeline on a DataProfile.
@@ -121,9 +125,22 @@ class PipelineOrchestrator:
 
         if result.classification is not None and result.insights is not None:
             try:
+                result.visual_intents = self._resolve_visual_intents(
+                    profile,
+                    result.classification,
+                    result.insights,
+                )
+                debug_print("VisualIntentResolver", result.visual_intents, self.debug)
+            except Exception as e:
+                result.errors.append(f"VisualIntentResolver failed: {e}")
+
+        if result.classification is not None and result.insights is not None:
+            try:
                 result.dashboard_plan = self._compose(
                     result.classification, result.insights, result.feature_plan,
                     raw_cols=profile.columns, stats=profile.stats,
+                    summary_tables=profile.summary_tables,
+                    visual_intents=result.visual_intents,
                 )
                 debug_print("Agent 4 — DashboardComposer", result.dashboard_plan, self.debug)
             except Exception as e:
@@ -143,6 +160,8 @@ class PipelineOrchestrator:
                     raw_cols=raw_cols,
                     engineered_cols=engineered_cols,
                     table_mapping=result.classification.table_mapping,
+                    summary_tables=profile.summary_tables,
+                    visual_intents=result.visual_intents,
                 )
                 result.dashboard_plan = validator.validate(
                     result.dashboard_plan,
@@ -187,7 +206,20 @@ class PipelineOrchestrator:
         feature_plan: "FeaturePlan | None" = None,
         raw_cols: dict | None = None,
         stats: dict | None = None,
+        summary_tables: list[dict[str, Any]] | None = None,
+        visual_intents: VisualIntentPlan | None = None,
     ) -> DashboardPlan:
         """Run Agent 4: Dashboard Composition."""
         return self.composer.compose(classification, insights, feature_plan,
-                                     raw_cols=raw_cols, stats=stats)
+                                     raw_cols=raw_cols, stats=stats,
+                                     summary_tables=summary_tables,
+                                     visual_intents=visual_intents)
+
+    def _resolve_visual_intents(
+        self,
+        profile: DataProfile,
+        classification: ClassificationResult,
+        insights: InsightReport,
+    ) -> VisualIntentPlan:
+        """Resolve deterministic visual intents from existing pipeline outputs."""
+        return self.visual_intent_resolver.resolve(profile, classification, insights)

@@ -6,12 +6,25 @@ BaseArchetype: abstract base class all archetype modules implement
 
 from __future__ import annotations
 
+import json
 import unicodedata
 from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING
 
 from core.grist_api import GristAPI
 from core.domain_classifier import ClassificationResult
 from core.dashboard_composer import DashboardPlan
+
+if TYPE_CHECKING:
+    from core.visual_intents import VisualIntent, VisualIntentPlan
+
+
+OFFICIAL_WIDGET_IDS = {
+    "advanced_chart": "@gristlabs/widget-chart",
+    "markdown": "@gristlabs/widget-markdown",
+    "map": "@gristlabs/widget-map#map",
+    "jupyterlite": "@gristlabs/widget-jupyterlite",
+}
 
 
 def _normalize(text: str) -> str:
@@ -73,6 +86,7 @@ class BaseArchetype(ABC):
         doc_id: str,
         classification: ClassificationResult,
         plan: DashboardPlan,
+        visual_intents: "VisualIntentPlan | None" = None,
     ) -> list[str]:
         """Apply the archetype template to the Grist document.
 
@@ -274,3 +288,207 @@ class BaseArchetype(ABC):
         col_refs = list(self._get_col_ref_map(api, doc_id, table_ref).values())
         self._add_section_fields(api, doc_id, section_id, col_refs)
         return section_id
+
+    def _add_custom_widget_section(
+        self,
+        api: GristAPI,
+        doc_id: str,
+        view_id: int,
+        table_ref: int,
+        title: str,
+        widget_def: dict,
+        *,
+        access: str = "none",
+        widget_options: dict | None = None,
+        columns_mapping: dict[str, str] | None = None,
+    ) -> int:
+        """Add a Grist custom section backed by an official widget definition."""
+        col_ref_map = self._get_col_ref_map(api, doc_id, table_ref)
+        persisted_columns_mapping = None
+        if columns_mapping:
+            persisted_columns_mapping = {
+                widget_column: col_ref_map[column_id]
+                for widget_column, column_id in columns_mapping.items()
+                if column_id in col_ref_map
+            }
+        custom_view = {
+            "mode": "url",
+            "url": None,
+            "widgetId": widget_def.get("widgetId"),
+            "widgetDef": widget_def,
+            "widgetOptions": widget_options,
+            "columnsMapping": persisted_columns_mapping,
+            "access": access,
+            "pluginId": widget_def.get("source", {}).get("pluginId", ""),
+            "sectionId": "",
+            "renderAfterReady": widget_def.get("renderAfterReady", False),
+        }
+        options = json.dumps(
+            {"customView": json.dumps(custom_view, ensure_ascii=False)},
+            ensure_ascii=False,
+        )
+        result = api.apply_actions(doc_id, [["AddRecord", "_grist_Views_section", None, {
+            "tableRef": table_ref,
+            "parentId": view_id,
+            "parentKey": "custom",
+            "title": title,
+            "defaultWidth": 100,
+            "borderWidth": 1,
+            "options": options,
+            "chartType": "",
+            "sortColRefs": "[]",
+            "linkSrcSectionRef": 0,
+            "linkSrcColRef": 0,
+            "linkTargetColRef": 0,
+        }]])
+        section_id: int = result["retValues"][0]
+        col_refs = list(col_ref_map.values())
+        self._add_section_fields(api, doc_id, section_id, col_refs)
+        return section_id
+
+    def _target_page_for_promoted_intent(self, intent: "VisualIntent") -> str | None:
+        """Return the page name that should host the promoted official widget."""
+        if intent.kind == "cross_tab":
+            return "Syntheses croisees"
+        return None
+
+    def _maybe_add_promoted_widget(
+        self,
+        api: GristAPI,
+        doc_id: str,
+        view_id: int,
+        page_name: str,
+        rendered_tables: dict[str, int],
+        visual_intents: "VisualIntentPlan | None",
+    ) -> bool:
+        """Materialize one promoted official Grist widget when safely supported."""
+        if visual_intents is None:
+            return False
+
+        promoted_intent = visual_intents.get_promoted_intent()
+        promoted_widget = visual_intents.get_promoted_widget()
+        if promoted_intent is None or promoted_widget != "advanced_chart":
+            return False
+
+        target_page = self._target_page_for_promoted_intent(promoted_intent)
+        if target_page is not None and _normalize(page_name) != _normalize(target_page):
+            return False
+
+        table_ref = rendered_tables.get(promoted_intent.source_table)
+        if table_ref is None:
+            return False
+
+        widget_id = OFFICIAL_WIDGET_IDS[promoted_widget]
+        widget_def = api.get_widget(widget_id)
+        if not widget_def:
+            return False
+
+        title = f"{promoted_intent.title} - widget avance"
+        self._add_custom_widget_section(
+            api,
+            doc_id,
+            view_id,
+            table_ref,
+            title,
+            widget_def,
+        )
+        return True
+
+    def _create_text_table(
+        self,
+        api: GristAPI,
+        doc_id: str,
+        table_id: str,
+        column_id: str,
+        content: str,
+    ) -> None:
+        """Create a minimal text table used to back narrative widgets."""
+        api.create_table(doc_id, table_id, columns=[
+            {"id": column_id, "fields": {"type": "Text"}},
+        ])
+        api.add_records(doc_id, table_id, [{column_id: content}])
+
+    def _add_geo_widget_page(
+        self,
+        api: GristAPI,
+        doc_id: str,
+        resolver: GristTableResolver,
+        intent: "VisualIntent",
+    ) -> str | None:
+        table_ref = resolver.get_ref(intent.source_table)
+        widget_def = api.get_widget(OFFICIAL_WIDGET_IDS["map"])
+        if not widget_def:
+            return None
+
+        view_id = self._create_page(api, doc_id, intent.title)
+        self._add_custom_widget_section(
+            api,
+            doc_id,
+            view_id,
+            table_ref,
+            intent.title,
+            widget_def,
+            access=intent.metadata.get("access", "read table"),
+            columns_mapping=intent.metadata.get("columns_mapping"),
+        )
+        return intent.title
+
+    def _add_markdown_widget_page(
+        self,
+        api: GristAPI,
+        doc_id: str,
+        resolver: GristTableResolver,
+        intent: "VisualIntent",
+    ) -> str | None:
+        content = (intent.narrative or "").strip()
+        if not content:
+            return None
+
+        table_id = intent.metadata.get("table_name", "Narrative_Summary")
+        column_id = intent.metadata.get("content_column", "Content")
+        self._create_text_table(api, doc_id, table_id, column_id, content)
+        fresh_resolver = GristTableResolver(api, doc_id)
+        table_ref = fresh_resolver.get_ref(table_id)
+        widget_def = api.get_widget(OFFICIAL_WIDGET_IDS["markdown"])
+        if not widget_def:
+            return None
+
+        page_name = intent.title
+        view_id = self._create_page(api, doc_id, page_name)
+        self._add_custom_widget_section(
+            api,
+            doc_id,
+            view_id,
+            table_ref,
+            page_name,
+            widget_def,
+            access="full",
+            columns_mapping={"Content": column_id},
+        )
+        return page_name
+
+    def _materialize_additional_visual_widgets(
+        self,
+        api: GristAPI,
+        doc_id: str,
+        resolver: GristTableResolver,
+        visual_intents: "VisualIntentPlan | None",
+    ) -> list[str]:
+        """Create deterministic extra pages for official widgets beyond the promoted one."""
+        if visual_intents is None:
+            return []
+
+        created_pages: list[str] = []
+        for intent in visual_intents.intents:
+            try:
+                if intent.preferred_widget == "map":
+                    page_name = self._add_geo_widget_page(api, doc_id, resolver, intent)
+                elif intent.preferred_widget == "markdown":
+                    page_name = self._add_markdown_widget_page(api, doc_id, resolver, intent)
+                else:
+                    page_name = None
+            except Exception:
+                page_name = None
+            if page_name:
+                created_pages.append(page_name)
+        return created_pages

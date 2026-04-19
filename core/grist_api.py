@@ -16,6 +16,7 @@ Flux de découverte :
   6. POST /api/docs/{docId}/tables/{tableId}/records → ajouter records
 """
 
+import json
 import math
 import time
 import requests
@@ -136,6 +137,7 @@ class GristAPI:
         self._workspace_id: Optional[int] = None
         self._workspace_name: Optional[str] = None
         self._all_workspaces: Optional[List[GristWorkspace]] = None
+        self._widgets_cache: Optional[List[Dict[str, Any]]] = None
 
     # ------------------------------------------------------------------
     # Helpers URL
@@ -431,6 +433,51 @@ class GristAPI:
             json=actions,
         )
         return response.json()
+
+    def list_widgets(self, force_refresh: bool = False) -> List[Dict[str, Any]]:
+        """Lister les widgets officiels et communautaires exposés par Grist.
+
+        GET /api/widgets
+        """
+        if self._widgets_cache is not None and not force_refresh:
+            return self._widgets_cache
+
+        response = self._request_with_retry(
+            "GET",
+            self._api_url("/api/widgets"),
+        )
+        data = response.json()
+        if not isinstance(data, list):
+            raise GristAPIError(200, f"Réponse widgets inattendue: {json.dumps(data)[:200]}")
+        self._widgets_cache = data
+        return data
+
+    def get_widget(
+        self,
+        widget_id: str,
+        plugin_id: str = "",
+        *,
+        force_refresh: bool = False,
+    ) -> Optional[Dict[str, Any]]:
+        """Retourner la définition d'un widget par son identifiant."""
+        widgets = self.list_widgets(force_refresh=force_refresh)
+        exact_match: Optional[Dict[str, Any]] = None
+        fallback_match: Optional[Dict[str, Any]] = None
+
+        for widget in widgets:
+            if widget.get("widgetId") != widget_id:
+                continue
+            current_plugin_id = widget.get("source", {}).get("pluginId", "")
+            if plugin_id and current_plugin_id == plugin_id:
+                exact_match = widget
+                break
+            if not plugin_id and current_plugin_id == "":
+                exact_match = widget
+                break
+            if fallback_match is None:
+                fallback_match = widget
+
+        return exact_match or fallback_match
 
     # ------------------------------------------------------------------
     # Normalisation des types Grist

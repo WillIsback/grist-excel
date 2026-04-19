@@ -12,6 +12,7 @@ from core.dashboard_composer import (
     WIDGET_TYPES,
     CHART_TYPES,
 )
+from core.visual_intents import VisualIntent, VisualIntentPlan
 
 
 SAMPLE_CLASSIFICATION = ClassificationResult(
@@ -125,6 +126,174 @@ class TestDashboardComposer:
         plan = composer.compose(SAMPLE_CLASSIFICATION, SAMPLE_INSIGHTS)
         assert len(plan.pages) >= 1
         assert "Dashboard RH" in [p.name for p in plan.pages]
+
+    def test_appends_summary_table_page(self, mock_llm_response, monkeypatch):
+        composer = DashboardComposer()
+        monkeypatch.setattr(composer, "_call_llm", lambda msgs: mock_llm_response)
+        plan = composer.compose(
+            SAMPLE_CLASSIFICATION,
+            SAMPLE_INSIGHTS,
+            summary_tables=[{
+                "name": "Corr_Employes_Departement_Salaire",
+                "group_by": "Departement",
+                "metric": "Salaire",
+                "source_table": "Employes",
+            }],
+        )
+
+        assert any(page.name == "Syntheses croisees" for page in plan.pages)
+        corr_page = next(page for page in plan.pages if page.name == "Syntheses croisees")
+        assert corr_page.sections[0].widget == "table"
+        assert corr_page.sections[0].table == "Corr_Employes_Departement_Salaire"
+        assert corr_page.sections[0].title == "Croisement Departement x Salaire"
+
+    def test_prefers_visual_intents_for_summary_sections(self, mock_llm_response, monkeypatch):
+        composer = DashboardComposer()
+        monkeypatch.setattr(composer, "_call_llm", lambda msgs: mock_llm_response)
+        intents = VisualIntentPlan(intents=[
+            VisualIntent(
+                kind="cross_tab",
+                source_table="Corr_Employes_Departement_Salaire",
+                source_columns=["Departement", "Salaire"],
+                insight_refs=[0],
+                priority=0.9,
+                confidence=0.8,
+                presentation="summary_page",
+                supported_widgets=["table"],
+                premium_widgets=["advanced_chart"],
+                preferred_widget="table",
+                title="Croisement guide par intent",
+                narrative="",
+                metadata={},
+            )
+        ], promoted_intent_index=0, promoted_widget="advanced_chart")
+        plan = composer.compose(
+            SAMPLE_CLASSIFICATION,
+            SAMPLE_INSIGHTS,
+            summary_tables=[{
+                "name": "Corr_Employes_Departement_Salaire",
+                "group_by": "Departement",
+                "metric": "Salaire",
+                "source_table": "Employes",
+            }],
+            visual_intents=intents,
+        )
+
+        corr_page = next(page for page in plan.pages if page.name == "Syntheses croisees")
+        assert corr_page.sections[0].title == "Croisement guide par intent"
+
+    def test_includes_visual_intents_in_prompt(self, mock_llm_response, monkeypatch):
+        composer = DashboardComposer()
+        received = []
+
+        def capture(msgs):
+            received.extend(msgs)
+            return mock_llm_response
+
+        monkeypatch.setattr(composer, "_call_llm", capture)
+        composer.compose(
+            SAMPLE_CLASSIFICATION,
+            SAMPLE_INSIGHTS,
+            visual_intents=VisualIntentPlan(intents=[
+                VisualIntent(
+                    kind="trend",
+                    source_table="Absences",
+                    source_columns=["Date_Debut", "Duree_Jours"],
+                    insight_refs=[1],
+                    priority=0.8,
+                    confidence=0.8,
+                    presentation="hero_chart",
+                    supported_widgets=["chart"],
+                    premium_widgets=["advanced_chart"],
+                    preferred_widget="chart",
+                    title="Pic d'absences en janvier",
+                    narrative="Pic d'absences en janvier",
+                    metadata={},
+                )
+            ]),
+        )
+        prompt_text = " ".join(m.get("content", "") for m in received)
+        assert "Intentions visuelles déterministes" in prompt_text
+        assert "hero_chart" in prompt_text
+        assert "premium=['advanced_chart']" in prompt_text
+        assert "Intention premium à privilégier" in prompt_text
+
+    def test_promoted_cross_tab_is_sorted_first(self, mock_llm_response, monkeypatch):
+        composer = DashboardComposer()
+        monkeypatch.setattr(composer, "_call_llm", lambda msgs: mock_llm_response)
+        intents = VisualIntentPlan(
+            intents=[
+                VisualIntent(
+                    kind="cross_tab",
+                    source_table="Corr_B",
+                    source_columns=["B", "Metric"],
+                    insight_refs=[0],
+                    priority=0.8,
+                    confidence=0.8,
+                    presentation="summary_page",
+                    supported_widgets=["table"],
+                    premium_widgets=["advanced_chart"],
+                    preferred_widget="table",
+                    title="Croisement B",
+                    narrative="",
+                    metadata={},
+                ),
+                VisualIntent(
+                    kind="cross_tab",
+                    source_table="Corr_A",
+                    source_columns=["A", "Metric"],
+                    insight_refs=[1],
+                    priority=0.9,
+                    confidence=0.9,
+                    presentation="summary_page",
+                    supported_widgets=["table"],
+                    premium_widgets=["advanced_chart"],
+                    preferred_widget="table",
+                    title="Croisement A",
+                    narrative="",
+                    metadata={},
+                ),
+            ],
+            promoted_intent_index=1,
+            promoted_widget="advanced_chart",
+        )
+        plan = composer.compose(SAMPLE_CLASSIFICATION, SAMPLE_INSIGHTS, visual_intents=intents)
+        corr_page = next(page for page in plan.pages if page.name == "Syntheses croisees")
+        assert corr_page.sections[0].table == "Corr_A"
+
+    def test_filters_line_chart_missing_axis(self, monkeypatch):
+        composer = DashboardComposer()
+        monkeypatch.setattr(composer, "_call_llm", lambda msgs: {
+            "pages": [{
+                "name": "Dashboard",
+                "sections": [
+                    {
+                        "widget": "chart",
+                        "chart_type": "line",
+                        "table": "Absences",
+                        "x": "Date_Debut",
+                        "y": None,
+                        "agg": "avg",
+                        "title": "Courbe invalide",
+                    },
+                    {
+                        "widget": "chart",
+                        "chart_type": "bar",
+                        "table": "Employes",
+                        "x": "Departement",
+                        "y": "Nom",
+                        "agg": "count",
+                        "title": "Bar valide",
+                    },
+                ],
+            }],
+        })
+
+        plan = composer.compose(SAMPLE_CLASSIFICATION, SAMPLE_INSIGHTS)
+
+        assert len(plan.pages) == 1
+        assert len(plan.pages[0].sections) == 1
+        assert plan.pages[0].sections[0].title == "Bar valide"
 
     def test_includes_insights_in_prompt(self, mock_llm_response, monkeypatch):
         composer = DashboardComposer()

@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field
 
 from config import Settings
 from core.data_analyzer import DataProfile
+from core.debug_utils import debug_print
 from core.domain_classifier import ClassificationResult
 from core.insight_extractor import InsightReport
 
@@ -194,20 +195,41 @@ class FeatureEngineer:
 
         for feature in plan.features:
             table_id = table_mapping.get(feature.table, feature.table)
+            columns_payload = [{
+                "id": feature.col_id,
+                "fields": {
+                    "type": feature.type,
+                    "label": feature.label,
+                    "formula": feature.formula,
+                    "isFormula": True,
+                },
+            }]
+            request_debug = {
+                "doc_id": doc_id,
+                "semantic_table": feature.table,
+                "table_id": table_id,
+                "method": "POST",
+                "url": None,
+                "payload": {"columns": columns_payload},
+            }
+            if hasattr(api, "_doc_url"):
+                try:
+                    request_debug["url"] = api._doc_url(doc_id, f"tables/{table_id}/columns")
+                except Exception:
+                    request_debug["url"] = None
+            debug_print("FeatureEngineer.patch_columns", request_debug, self.settings.DEBUG)
+
             try:
-                api.patch_columns(doc_id, table_id, [{
-                    "id": feature.col_id,
-                    "fields": {
-                        "type": feature.type,
-                        "label": feature.label,
-                        "formula": feature.formula,
-                        "isFormula": True,
-                    },
-                }])
+                api.add_columns(doc_id, table_id, columns_payload)
                 api.get_records(doc_id, table_id)
                 applied.append(feature.col_id)
                 logger.info("Feature column applied: %s.%s", table_id, feature.col_id)
             except Exception as exc:
+                debug_print(
+                    "FeatureEngineer.patch_columns.error",
+                    {**request_debug, "error": str(exc)},
+                    self.settings.DEBUG,
+                )
                 logger.warning("Feature column failed: %s.%s — %s", table_id, feature.col_id, exc)
                 failed.append(feature.col_id)
 

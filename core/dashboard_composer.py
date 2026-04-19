@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 if TYPE_CHECKING:
     from core.feature_engineer import FeaturePlan
+    from core.visual_intents import VisualIntentPlan
 
 logger = logging.getLogger(__name__)
 
@@ -112,10 +113,14 @@ class DashboardComposer:
         retry_context: dict | None = None,
         raw_cols: dict | None = None,
         stats: dict | None = None,
+        summary_tables: list[dict[str, Any]] | None = None,
+        visual_intents: "VisualIntentPlan | None" = None,
     ) -> DashboardPlan:
         """Compose a dashboard plan."""
         prompt = self._build_prompt(classification, insights, feature_plan, retry_context,
-                                    raw_cols=raw_cols, stats=stats)
+                                    raw_cols=raw_cols, stats=stats,
+                                    summary_tables=summary_tables,
+                                    visual_intents=visual_intents)
         messages = [
             {
                 "role": "system",
@@ -139,10 +144,64 @@ class DashboardComposer:
                 if section.get("widget") == "chart":
                     if not section.get("chart_type"):
                         continue
+                    if section.get("chart_type") == "line":
+                        if not section.get("x") or not section.get("y"):
+                            continue
                 valid_sections.append(section)
             page["sections"] = valid_sections
         raw_data["pages"] = pages_data
-        return DashboardPlan(**raw_data)
+        plan = DashboardPlan(**raw_data)
+        return self._append_summary_sections(plan, summary_tables, visual_intents)
+
+    def _append_summary_sections(
+        self,
+        plan: DashboardPlan,
+        summary_tables: list[dict[str, Any]] | None,
+        visual_intents: "VisualIntentPlan | None" = None,
+    ) -> DashboardPlan:
+        """Append deterministic grid widgets for precomputed summary tables."""
+        intent_sections = []
+        promoted_source_table = None
+        if visual_intents is not None:
+            promoted_intent = visual_intents.get_promoted_intent()
+            if promoted_intent and promoted_intent.kind == "cross_tab":
+                promoted_source_table = promoted_intent.source_table
+            intent_sections = [
+                PageSection(
+                    widget="table",
+                    table=intent.source_table,
+                    title=intent.title,
+                )
+                for intent in visual_intents.intents
+                if intent.kind == "cross_tab"
+            ]
+            if promoted_source_table:
+                intent_sections.sort(
+                    key=lambda section: 0 if section.table == promoted_source_table else 1
+                )
+
+        if intent_sections:
+            pages = list(plan.pages)
+            pages.append(Page(name="Syntheses croisees", sections=intent_sections))
+            return DashboardPlan(pages=pages)
+
+        if not summary_tables:
+            return plan
+
+        sections = [
+            PageSection(
+                widget="table",
+                table=table["name"],
+                title=f"Croisement {table['group_by']} x {table['metric']}",
+            )
+            for table in summary_tables
+        ]
+        if not sections:
+            return plan
+
+        pages = list(plan.pages)
+        pages.append(Page(name="Syntheses croisees", sections=sections))
+        return DashboardPlan(pages=pages)
 
     def _build_prompt(
         self,
@@ -152,6 +211,8 @@ class DashboardComposer:
         retry_context: dict | None = None,
         raw_cols: dict | None = None,
         stats: dict | None = None,
+        summary_tables: list[dict[str, Any]] | None = None,
+        visual_intents: "VisualIntentPlan | None" = None,
     ) -> str:
         """Build the composition prompt."""
         archetype = classification.archetype
@@ -203,6 +264,39 @@ class DashboardComposer:
             for f in feature_plan.features:
                 table_id = classification.table_mapping.get(f.table, f.table)
                 prompt_lines.append(f"  {table_id}.{f.col_id} ({f.type}) : {f.label}")
+
+        if summary_tables:
+            prompt_lines.extend([
+                "",
+                "Tables de synthèse croisée précalculées disponibles pour widgets table :",
+            ])
+            for table in summary_tables:
+                prompt_lines.append(
+                    f"  {table['name']} : {table['group_by']} x {table['metric']} ({table['source_table']})"
+                )
+
+        if visual_intents and visual_intents.intents:
+            prompt_lines.extend([
+                "",
+                "Intentions visuelles déterministes dérivées de l'analyse :",
+            ])
+            for intent in visual_intents.intents:
+                prompt_lines.append(
+                    f"  [{intent.kind}] {intent.title} -> supported={intent.supported_widgets}, "
+                    f"premium={intent.premium_widgets}, preferred={intent.preferred_widget}, "
+                    f"presentation={intent.presentation}, source={intent.source_table}"
+                )
+            promoted_intent = visual_intents.get_promoted_intent()
+            promoted_widget = visual_intents.get_promoted_widget()
+            if promoted_intent and promoted_widget:
+                prompt_lines.extend([
+                    "",
+                    "Intention premium à privilégier si possible :",
+                    (
+                        f"  {promoted_intent.title} -> widget premium={promoted_widget}, "
+                        f"preferred={promoted_intent.preferred_widget}, source={promoted_intent.source_table}"
+                    ),
+                ])
 
         if retry_context:
             prompt_lines.extend([

@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from core.dashboard_composer import DashboardComposer
     from core.domain_classifier import ClassificationResult
     from core.insight_extractor import InsightReport
+    from core.visual_intents import VisualIntentPlan
 
 logger = logging.getLogger(__name__)
 
@@ -35,10 +36,14 @@ class ReflexionValidator:
         raw_cols: dict[str, list[str]],
         engineered_cols: dict[str, list[str]],
         table_mapping: dict[str, str],
+        summary_tables: list[dict] | None = None,
+        visual_intents: "VisualIntentPlan | None" = None,
     ):
         self.raw_cols = raw_cols
         self.engineered_cols = engineered_cols
         self.table_mapping = table_mapping
+        self.summary_tables = summary_tables or []
+        self.visual_intents = visual_intents
 
     def _resolve_table(self, semantic_table: str) -> str | None:
         if semantic_table in self.table_mapping:
@@ -47,7 +52,8 @@ class ReflexionValidator:
         for role, actual in self.table_mapping.items():
             if _normalize(role) == norm:
                 return actual
-        all_tables = set(self.raw_cols.keys()) | set(self.engineered_cols.keys())
+        summary_names = {table.get("name") for table in self.summary_tables if table.get("name")}
+        all_tables = set(self.raw_cols.keys()) | set(self.engineered_cols.keys()) | summary_names
         for t in all_tables:
             if _normalize(t) == norm:
                 return t
@@ -123,6 +129,8 @@ class ReflexionValidator:
             classification,
             insights,
             retry_context=retry_context,
+            summary_tables=self.summary_tables,
+            visual_intents=self.visual_intents,
         )
         retry_cleaned, _ = self._validate_and_count(retry_plan)
         return retry_cleaned
@@ -141,6 +149,11 @@ class ReflexionValidator:
                 self.raw_cols.get(table_id, [])
                 + self.engineered_cols.get(table_id, [])
             )
+        for summary_table in self.summary_tables:
+            table_name = summary_table.get("name")
+            if not table_name:
+                continue
+            available[table_name] = [col.get("id", "") for col in summary_table.get("columns", [])]
 
         return {
             "dropped_sections": dropped_info,

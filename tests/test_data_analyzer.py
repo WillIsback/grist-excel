@@ -74,6 +74,15 @@ class TestDataProfile:
         assert isinstance(ctx, str)
         assert "sheets" in ctx.lower() or "Employes" in ctx
 
+    def test_summary_tables_are_computed(self, sample_xlsx):
+        profile = DataAnalyzer().analyze(str(sample_xlsx))
+        assert profile.summary_tables
+        summary = profile.summary_tables[0]
+        assert summary["source_table"] == "Employes"
+        assert summary["group_by"] == "Departement"
+        assert summary["metric"] == "Salaire"
+        assert summary["records"]
+
     def test_to_json_returns_valid_json(self, sample_xlsx):
         profile = DataAnalyzer().analyze(str(sample_xlsx))
         json_str = profile.to_json()
@@ -82,4 +91,5 @@ class TestDataProfile:
         assert "columns" in parsed
         assert "stats" in parsed
         assert "apparent_fk" in parsed
+        assert "summary_tables" in parsed
         assert "Employes" in parsed["sheets"]

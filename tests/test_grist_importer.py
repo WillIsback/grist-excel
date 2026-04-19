@@ -29,21 +29,82 @@ class TestGristImporter:
             assert doc_id == "new~abc123~1"
             mock_api.create_document.assert_called_once()
 
+    def test_import_excel_materializes_summary_tables(self, mock_api, tmp_path):
+        xlsx = tmp_path / "test.xlsx"
+        xlsx.write_bytes(b"fake")
+        importer = GristImporter(mock_api)
+
+        summary_tables = [{
+            "name": "Corr_Employes_Departement_Salaire",
+            "columns": [
+                {"id": "Departement", "label": "Departement", "type": "Text"},
+                {"id": "Effectif", "label": "Effectif", "type": "Int"},
+            ],
+            "records": [{"Departement": "IT", "Effectif": 2}],
+        }]
+
+        with patch("pandas.ExcelFile") as MockXls:
+            mock_xls = MagicMock()
+            mock_xls.sheet_names = []
+            MockXls.return_value = mock_xls
+
+            importer.import_excel(str(xlsx), summary_tables=summary_tables)
+
+        created_table_ids = [call_args.args[1] for call_args in mock_api.create_table.call_args_list]
+        assert "Corr_Employes_Departement_Salaire" in created_table_ids
+        mock_api.add_records.assert_called_once()
+
+    def test_import_excel_hides_summary_table_pages(self, mock_api, tmp_path):
+        xlsx = tmp_path / "test.xlsx"
+        xlsx.write_bytes(b"fake")
+        importer = GristImporter(mock_api)
+
+        mock_api.get_records.side_effect = [
+            [{"id": 10, "fields": {"name": "Corr_Employes_Departement_Salaire", "type": "raw_data"}}],
+            [{"id": 20, "fields": {"viewRef": 10}}],
+            [{"id": 30, "fields": {"viewRef": 10}}],
+        ]
+
+        summary_tables = [{
+            "name": "Corr_Employes_Departement_Salaire",
+            "columns": [
+                {"id": "Departement", "label": "Departement", "type": "Text"},
+            ],
+            "records": [{"Departement": "IT"}],
+        }]
+
+        with patch("pandas.ExcelFile") as MockXls:
+            mock_xls = MagicMock()
+            mock_xls.sheet_names = []
+            MockXls.return_value = mock_xls
+
+            importer.import_excel(str(xlsx), summary_tables=summary_tables)
+
+        mock_api.apply_actions.assert_called_once_with(
+            "new~abc123~1",
+            [
+                ["RemoveRecord", "_grist_Pages", 20],
+                ["RemoveRecord", "_grist_TabBar", 30],
+            ],
+        )
+
     def test_import_excel_reads_all_sheets(self, mock_api, tmp_path):
         xlsx = tmp_path / "test.xlsx"
         xlsx.write_bytes(b"fake")
         importer = GristImporter(mock_api)
 
-        mock_row = MagicMock()
-        mock_row.__iter__ = MagicMock(return_value=iter(["A", "B"]))
-        mock_row.__getitem__ = MagicMock(side_effect=lambda k: "val")
-        mock_df = MagicMock()
-        mock_df.empty = False
-        mock_df.columns = ["A", "B"]
-        mock_df.iterrows.return_value = iter([(0, mock_row), (1, mock_row)])
+        def make_df():
+            mock_row = MagicMock()
+            mock_row.__iter__ = MagicMock(return_value=iter(["A", "B"]))
+            mock_row.__getitem__ = MagicMock(side_effect=lambda k: "val")
+            mock_df = MagicMock()
+            mock_df.empty = False
+            mock_df.columns = ["A", "B"]
+            mock_df.iterrows.return_value = iter([(0, mock_row), (1, mock_row)])
+            return mock_df
 
         with patch("pandas.ExcelFile") as MockXls, \
-             patch("pandas.read_excel", return_value=mock_df):
+             patch("pandas.read_excel", side_effect=lambda *args, **kwargs: make_df()):
             mock_xls = MagicMock()
             mock_xls.sheet_names = ["Sheet1", "Sheet2"]
             MockXls.return_value = mock_xls

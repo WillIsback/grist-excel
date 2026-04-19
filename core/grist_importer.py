@@ -108,7 +108,11 @@ class GristImporter:
     def __init__(self, api: GristAPI):
         self.api = api
 
-    def import_excel(self, file_path: str) -> str:
+    def import_excel(
+        self,
+        file_path: str,
+        summary_tables: list[dict[str, Any]] | None = None,
+    ) -> str:
         """Uploader un fichier Excel et retourner le docId cree avec toutes les tables.
 
         Etapes:
@@ -154,6 +158,18 @@ class GristImporter:
             except Exception as e:
                 print(f"  Erreur feuille '{sheet_name}': {e}")
 
+        for summary_table in summary_tables or []:
+            try:
+                self._import_summary_table(doc_id, summary_table)
+            except Exception as e:
+                print(f"  Erreur table de synthese '{summary_table.get('name', '?')}': {e}")
+
+        if summary_tables:
+            self._hide_summary_table_pages(
+                doc_id,
+                [_safe_table_id(table["name"]) for table in summary_tables],
+            )
+
         return doc_id
 
     def _import_sheet(self, doc_id: str, sheet_name: str, df: pd.DataFrame) -> None:
@@ -188,3 +204,60 @@ class GristImporter:
 
         if records:
             self.api.add_records(doc_id, table_id, records)
+
+    def _import_summary_table(self, doc_id: str, spec: dict[str, Any]) -> None:
+        """Creer une table Grist legere a partir d'une synthese precalculee."""
+        columns_spec = spec.get("columns", [])
+        if not columns_spec:
+            return
+
+        table_id = _safe_table_id(spec["name"])
+        columns = [
+            {
+                "id": _safe_col_id(col["id"]),
+                "fields": {
+                    "type": col.get("type", "Text"),
+                    "label": col.get("label", col["id"]),
+                },
+            }
+            for col in columns_spec
+        ]
+        self.api.create_table(doc_id, table_id, columns)
+
+        records = []
+        for row in spec.get("records", []):
+            records.append({
+                _safe_col_id(col["id"]): _clean_value(row.get(col["id"]))
+                for col in columns_spec
+            })
+
+        if records:
+            self.api.add_records(doc_id, table_id, records)
+
+    def _hide_summary_table_pages(self, doc_id: str, summary_table_ids: list[str]) -> None:
+        """Remove raw-data pages/tabs auto-created for summary tables, keep tables intact."""
+        if not summary_table_ids:
+            return
+
+        views = self.api.get_records(doc_id, "_grist_Views")
+        pages = self.api.get_records(doc_id, "_grist_Pages")
+        tabs = self.api.get_records(doc_id, "_grist_TabBar")
+
+        summary_view_ids = {
+            view["id"]
+            for view in views
+            if view.get("fields", {}).get("name") in summary_table_ids
+        }
+        if not summary_view_ids:
+            return
+
+        actions = []
+        for page in pages:
+            if page.get("fields", {}).get("viewRef") in summary_view_ids:
+                actions.append(["RemoveRecord", "_grist_Pages", page["id"]])
+        for tab in tabs:
+            if tab.get("fields", {}).get("viewRef") in summary_view_ids:
+                actions.append(["RemoveRecord", "_grist_TabBar", tab["id"]])
+
+        if actions:
+            self.api.apply_actions(doc_id, actions)

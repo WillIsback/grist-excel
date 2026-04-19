@@ -50,7 +50,9 @@ def main() -> None:
     )
 
     args = parser.parse_args()
-    settings = Settings(DEBUG=args.debug)
+    settings = Settings()
+    if args.debug:
+        settings.DEBUG = True
     output_dir = Path(args.output)
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -68,6 +70,8 @@ def main() -> None:
         print(f"Fichier introuvable : {args.input}")
         sys.exit(1)
     print(f"  {len(profile.sheets)} feuille(s) : {profile.sheets}")
+    if profile.summary_tables:
+        print(f"  Syntheses : {len(profile.summary_tables)} table(s)")
 
     # Step 2: Run LLM pipeline
     print("\n[2/4] Pipeline LLM (classification + insights + dashboard plan)...")
@@ -111,7 +115,7 @@ def main() -> None:
     api = GristAPI(settings.GRIST_SERVER, settings.GRIST_API_KEY)
     importer = GristImporter(api)
     try:
-        doc_id = importer.import_excel(args.input)
+        doc_id = importer.import_excel(args.input, summary_tables=profile.summary_tables)
     except KeyboardInterrupt:
         raise
     except SystemExit:
@@ -141,7 +145,12 @@ def main() -> None:
     # Step 4: Apply archetype template
     print("\n[4/4] Application du template archetype...")
     engine = ArchetypeEngine(api)
-    created_pages = engine.apply(doc_id, result.classification, result.dashboard_plan)
+    created_pages = engine.apply(
+        doc_id,
+        result.classification,
+        result.dashboard_plan,
+        result.visual_intents,
+    )
     print(f"  Pages créées : {created_pages}")
 
     print(f"\n{'=' * 60}")

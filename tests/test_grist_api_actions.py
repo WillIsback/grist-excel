@@ -81,3 +81,35 @@ class TestApplyActions:
         result = api.apply_actions("doc123", [])
 
         assert result == {"results": [1, 2]}
+
+
+class TestWidgets:
+    def test_list_widgets_gets_widget_catalog(self, api, mock_session):
+        mock_session.request.return_value = _resp([
+            {"widgetId": "@gristlabs/widget-chart", "name": "Advanced charts", "url": "https://example.test/chart"},
+        ])
+
+        widgets = api.list_widgets()
+
+        assert widgets[0]["widgetId"] == "@gristlabs/widget-chart"
+
+    def test_get_widget_prefers_exact_plugin_match(self, api, mock_session):
+        mock_session.request.return_value = _resp([
+            {
+                "widgetId": "same-id",
+                "name": "Plugin version",
+                "url": "https://example.test/plugin",
+                "source": {"pluginId": "plugin-a"},
+            },
+            {
+                "widgetId": "same-id",
+                "name": "Hosted version",
+                "url": "https://example.test/hosted",
+                "source": {"pluginId": ""},
+            },
+        ])
+
+        widget = api.get_widget("same-id", plugin_id="plugin-a")
+
+        assert widget is not None
+        assert widget["name"] == "Plugin version"

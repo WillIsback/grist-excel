@@ -5,6 +5,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 from core.pipeline import PipelineOrchestrator, PipelineResult
 from core.data_analyzer import DataProfile
+from core.visual_intents import VisualIntentPlan
 
 
 SAMPLE_XLSX_PATH = "samples/employees_rh.xlsx"
@@ -21,6 +22,14 @@ def _mock_profile():
         stats={},
         apparent_fk=[],
         markdown_summary="# Test",
+        summary_tables=[{
+            "name": "Corr_Employes_Departement_Salaire",
+            "group_by": "Departement",
+            "metric": "Salaire",
+            "source_table": "Employes",
+            "columns": [],
+            "records": [],
+        }],
     )
 
 
@@ -38,6 +47,14 @@ class TestPipelineResult:
         assert "classification" in d
         assert "insights" in d
         assert "dashboard_plan" in d
+
+    def test_to_dict_includes_visual_intents(self):
+        result = PipelineResult(
+            profile=_mock_profile(),
+            visual_intents=VisualIntentPlan(intents=[]),
+        )
+        d = result.to_dict()
+        assert "visual_intents" in d
 
     def test_save_writes_json(self, tmp_path):
         result = PipelineResult(
@@ -110,6 +127,44 @@ class TestPipelineOrchestrator:
         assert result.insights is not None
         assert result.dashboard_plan is not None
         assert len(result.errors) == 0
+
+    def test_compose_receives_summary_tables(self, mock_agents, monkeypatch):
+        mock_classify, mock_extract, _, _, _, _ = mock_agents
+        received = {}
+
+        def mock_compose(classification, insights, feature_plan=None, **kwargs):
+            from core.dashboard_composer import DashboardPlan
+            received.update(kwargs)
+            return DashboardPlan(pages=[])
+
+        orchestrator = PipelineOrchestrator()
+        monkeypatch.setattr(orchestrator, "_classify", mock_classify)
+        monkeypatch.setattr(orchestrator, "_extract", mock_extract)
+        monkeypatch.setattr(orchestrator, "_compose", mock_compose)
+
+        orchestrator.run(_mock_profile())
+
+        assert received["summary_tables"]
+        assert received["summary_tables"][0]["name"] == "Corr_Employes_Departement_Salaire"
+
+    def test_compose_receives_visual_intents(self, mock_agents, monkeypatch):
+        mock_classify, mock_extract, _, _, _, _ = mock_agents
+        received = {}
+
+        def mock_compose(classification, insights, feature_plan=None, **kwargs):
+            from core.dashboard_composer import DashboardPlan
+            received.update(kwargs)
+            return DashboardPlan(pages=[])
+
+        orchestrator = PipelineOrchestrator()
+        monkeypatch.setattr(orchestrator, "_classify", mock_classify)
+        monkeypatch.setattr(orchestrator, "_extract", mock_extract)
+        monkeypatch.setattr(orchestrator, "_compose", mock_compose)
+
+        orchestrator.run(_mock_profile())
+
+        assert received["visual_intents"] is not None
+        assert received["visual_intents"].intents
 
     def test_error_handling_continues_pipeline(self, mock_agents, monkeypatch):
         mock_classify, _, mock_compose, _, _, _ = mock_agents

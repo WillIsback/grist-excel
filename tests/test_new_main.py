@@ -96,8 +96,16 @@ class TestNewMain:
             from main import main
             main()
 
-        MockGI.return_value.import_excel.assert_called_once_with(str(xlsx))
-        MockAE.return_value.apply.assert_called_once()
+        MockGI.return_value.import_excel.assert_called_once_with(
+            str(xlsx),
+            summary_tables=result.profile.summary_tables,
+        )
+        MockAE.return_value.apply.assert_called_once_with(
+            "new~doc~1",
+            result.classification,
+            result.dashboard_plan,
+            result.visual_intents,
+        )
 
     def test_pipeline_errors_printed_but_continue(self, tmp_path, capsys):
         xlsx = tmp_path / "test.xlsx"

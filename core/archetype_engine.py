@@ -10,6 +10,7 @@ import logging
 from core.grist_api import GristAPI
 from core.domain_classifier import ClassificationResult
 from core.dashboard_composer import DashboardPlan
+from core.visual_intents import VisualIntentPlan
 from archetypes.base import BaseArchetype
 from archetypes.generic import GenericArchetype
 from archetypes.hr import HRArchetype
@@ -43,6 +44,7 @@ class ArchetypeEngine:
         doc_id: str,
         classification: ClassificationResult,
         plan: DashboardPlan,
+        visual_intents: VisualIntentPlan | None = None,
     ) -> list[str]:
         """Apply the archetype corresponding to classification.archetype.
 
@@ -58,7 +60,7 @@ class ArchetypeEngine:
             classification.archetype, archetype_cls.__name__,
         )
         try:
-            return archetype.apply(self.api, doc_id, classification, plan)
+            return archetype.apply(self.api, doc_id, classification, plan, visual_intents)
         except Exception as exc:
             logger.error("ArchetypeEngine.apply failed: %s", exc)
             return []

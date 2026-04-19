@@ -6,6 +6,7 @@ from core.feature_engineer import FeatureEngineer
 from core.data_analyzer import DataProfile
 from core.domain_classifier import ClassificationResult
 from core.insight_extractor import InsightReport, InsightEntry
+from config import Settings
 
 
 def _make_profile():
@@ -95,7 +96,7 @@ def test_apply_patches_formula_column():
 
     applied, failed = eng.apply(api, "doc123", plan, table_mapping)
 
-    api.patch_columns.assert_called_once_with(
+    api.add_columns.assert_called_once_with(
         "doc123",
         "Employes",
         [{
@@ -117,7 +118,7 @@ def test_apply_skips_on_api_error():
 
     eng = FeatureEngineer()
     api = MagicMock(spec=GristAPI)
-    api.patch_columns.side_effect = Exception("API error")
+    api.add_columns.side_effect = Exception("API error")
 
     plan = FeaturePlan(features=[
         FormulaColumn(
@@ -128,3 +129,48 @@ def test_apply_skips_on_api_error():
 
     assert applied == []
     assert "bad_col" in failed
+
+
+def test_apply_emits_debug_payload():
+    from core.grist_api import GristAPI
+
+    eng = FeatureEngineer(Settings(DEBUG=True))
+    api = MagicMock(spec=GristAPI)
+    api.get_records.return_value = []
+    api._doc_url.return_value = "http://localhost:8484/api/docs/doc123/tables/Employes/columns"
+
+    plan = FeaturePlan(features=[
+        FormulaColumn(
+            table="employees",
+            col_id="nb_absences",
+            label="Nb Absences",
+            type="Int",
+            formula="len(Absences.lookupRecords(ID_Employe=$ID_Employe))",
+        )
+    ])
+
+    with patch("core.feature_engineer.debug_print") as debug_mock:
+        eng.apply(api, "doc123", plan, {"employees": "Employes"})
+
+    debug_mock.assert_called_with(
+        "FeatureEngineer.patch_columns",
+        {
+            "doc_id": "doc123",
+            "semantic_table": "employees",
+            "table_id": "Employes",
+            "method": "POST",
+            "url": "http://localhost:8484/api/docs/doc123/tables/Employes/columns",
+            "payload": {
+                "columns": [{
+                    "id": "nb_absences",
+                    "fields": {
+                        "type": "Int",
+                        "label": "Nb Absences",
+                        "formula": "len(Absences.lookupRecords(ID_Employe=$ID_Employe))",
+                        "isFormula": True,
+                    },
+                }],
+            },
+        },
+        True,
+    )
