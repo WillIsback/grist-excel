@@ -115,23 +115,27 @@ class DashboardComposer:
         stats: dict | None = None,
         summary_tables: list[dict[str, Any]] | None = None,
         visual_intents: "VisualIntentPlan | None" = None,
+        user_intent: str | None = None,
     ) -> DashboardPlan:
         """Compose a dashboard plan."""
         prompt = self._build_prompt(classification, insights, feature_plan, retry_context,
                                     raw_cols=raw_cols, stats=stats,
                                     summary_tables=summary_tables,
                                     visual_intents=visual_intents)
+        system_content = (
+            "Vous êtes un architecte de dashboards Grist. "
+            "Composez un plan de dashboard basé sur les insights métier fournis. "
+            "Mappez chaque insight à un widget de chart. "
+            "Ajoutez aussi une page formulaire pour la table principale. "
+            "RÉPONDEZ UNIQUEMENT en JSON valide selon le schéma demandé."
+        )
+        if user_intent:
+            system_content += (
+                f"\n\nObjectif utilisateur : {user_intent}\n"
+                "Prioriser les widgets qui répondent directement à cette question."
+            )
         messages = [
-            {
-                "role": "system",
-                "content": (
-                    "Vous êtes un architecte de dashboards Grist. "
-                    "Composez un plan de dashboard basé sur les insights métier fournis. "
-                    "Mappez chaque insight à un widget de chart. "
-                    "Ajoutez aussi une page formulaire pour la table principale. "
-                    "RÉPONDEZ UNIQUEMENT en JSON valide selon le schéma demandé."
-                ),
-            },
+            {"role": "system", "content": system_content},
             {"role": "user", "content": prompt},
         ]
 

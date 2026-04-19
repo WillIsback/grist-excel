@@ -363,3 +363,67 @@ class TestDashboardComposer:
         validated = plan.self_reflect(SAMPLE_INSIGHTS)
         assert len(validated.pages) == 1
         assert validated.pages[0].sections[0].widget == "card_list"
+
+
+def test_compose_injects_user_intent_into_system_prompt():
+    from unittest.mock import patch
+    from core.dashboard_composer import DashboardComposer
+    from core.domain_classifier import ClassificationResult
+    from core.insight_extractor import InsightReport, InsightEntry
+
+    classification = ClassificationResult(
+        archetype="HR", confidence=0.9,
+        table_mapping={"employees": "Employes"}, params={},
+    )
+    insights = InsightReport(insights=[
+        InsightEntry(type="distribution", table="Employes", col="Departement",
+                     finding="IT domine", priority=1),
+    ])
+    composer = DashboardComposer()
+    mock_plan = {"pages": [{"name": "RH", "sections": [
+        {"widget": "chart", "title": "IT domine", "chart_type": "bar",
+         "table": "Employes", "x": "Departement", "y": "Effectif", "agg": "count"}
+    ]}]}
+    captured = []
+
+    def fake_call_llm(messages, schema=None, _retry=False):
+        captured.extend(messages)
+        return mock_plan
+
+    with patch.object(composer, "_call_llm", side_effect=fake_call_llm):
+        composer.compose(classification, insights, user_intent="analyser les coûts salariaux")
+
+    system_msg = captured[0]["content"]
+    assert "analyser les coûts salariaux" in system_msg
+
+
+def test_compose_no_intent_unchanged():
+    from unittest.mock import patch
+    from core.dashboard_composer import DashboardComposer
+    from core.domain_classifier import ClassificationResult
+    from core.insight_extractor import InsightReport, InsightEntry
+
+    classification = ClassificationResult(
+        archetype="HR", confidence=0.9,
+        table_mapping={"employees": "Employes"}, params={},
+    )
+    insights = InsightReport(insights=[
+        InsightEntry(type="kpi", table="Employes", col="Salaire",
+                     finding="salaire moyen élevé", priority=1),
+    ])
+    composer = DashboardComposer()
+    mock_plan = {"pages": [{"name": "RH", "sections": [
+        {"widget": "chart", "title": "salaire moyen élevé", "chart_type": "bar",
+         "table": "Employes", "x": "Departement", "y": "Salaire", "agg": "avg"}
+    ]}]}
+    captured = []
+
+    def fake_call_llm(messages, schema=None, _retry=False):
+        captured.extend(messages)
+        return mock_plan
+
+    with patch.object(composer, "_call_llm", side_effect=fake_call_llm):
+        composer.compose(classification, insights, user_intent=None)
+
+    system_msg = captured[0]["content"]
+    assert "Objectif" not in system_msg
