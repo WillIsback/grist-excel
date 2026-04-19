@@ -109,6 +109,7 @@ class DashboardComposer:
         classification: ClassificationResult,
         insights: InsightReport,
         feature_plan: "FeaturePlan | None" = None,
+        retry_context: dict | None = None,
     ) -> DashboardPlan:
         """Compose a dashboard plan.
 
@@ -120,7 +121,7 @@ class DashboardComposer:
         Returns:
             DashboardPlan with pages and sections
         """
-        prompt = self._build_prompt(classification, insights, feature_plan)
+        prompt = self._build_prompt(classification, insights, feature_plan, retry_context)
         messages = [
             {
                 "role": "system",
@@ -154,6 +155,7 @@ class DashboardComposer:
         classification: ClassificationResult,
         insights: InsightReport,
         feature_plan: "FeaturePlan | None" = None,
+        retry_context: dict | None = None,
     ) -> str:
         """Build the composition prompt."""
         archetype = classification.archetype
@@ -182,6 +184,20 @@ class DashboardComposer:
             for f in feature_plan.features:
                 table_id = classification.table_mapping.get(f.table, f.table)
                 prompt_lines.append(f"  {table_id}.{f.col_id} ({f.type}) : {f.label}")
+
+        if retry_context:
+            prompt_lines.extend([
+                "",
+                "⚠ RETRY — sections précédentes rejetées (colonnes inexistantes) :",
+            ])
+            for line in retry_context.get("dropped_sections", []):
+                prompt_lines.append(line)
+            prompt_lines.extend([
+                "",
+                "Colonnes disponibles (utilisez UNIQUEMENT celles-ci) :",
+            ])
+            for table_id, cols in retry_context.get("available_columns", {}).items():
+                prompt_lines.append(f"  {table_id}: {', '.join(cols)}")
 
         prompt_lines.extend([
             "",

@@ -97,3 +97,52 @@ class ReflexionValidator:
     def validate_deterministic(self, plan: DashboardPlan) -> DashboardPlan:
         cleaned, _ = self._validate_and_count(plan)
         return cleaned
+
+    def validate(
+        self,
+        plan: DashboardPlan,
+        classification: "ClassificationResult",
+        insights: "InsightReport",
+        composer: "DashboardComposer",
+    ) -> DashboardPlan:
+        """Validate plan. If >50% dropped, retry via composer once."""
+        cleaned, drop_ratio = self._validate_and_count(plan)
+
+        if drop_ratio <= 0.5:
+            if drop_ratio > 0:
+                logger.info("ReflexionValidator dropped %.0f%% sections (below threshold)", drop_ratio * 100)
+            return cleaned
+
+        logger.warning(
+            "ReflexionValidator dropped %.0f%% sections — triggering LLM retry",
+            drop_ratio * 100,
+        )
+
+        retry_context = self._build_retry_context(plan)
+        retry_plan = composer.compose(
+            classification,
+            insights,
+            retry_context=retry_context,
+        )
+        retry_cleaned, _ = self._validate_and_count(retry_plan)
+        return retry_cleaned
+
+    def _build_retry_context(self, original_plan: DashboardPlan) -> dict:
+        dropped_info = []
+        for page in original_plan.pages:
+            for section in page.sections:
+                valid, reason = self._validate_section(section)
+                if not valid:
+                    dropped_info.append(f"  '{section.title}': {reason}")
+
+        available = {}
+        for table_id in set(list(self.raw_cols.keys()) + list(self.engineered_cols.keys())):
+            available[table_id] = (
+                self.raw_cols.get(table_id, [])
+                + self.engineered_cols.get(table_id, [])
+            )
+
+        return {
+            "dropped_sections": dropped_info,
+            "available_columns": available,
+        }
