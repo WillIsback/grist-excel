@@ -41,6 +41,11 @@ class Settings(BaseSettings):
     CORRELATION_SUMMARY_MAX_TABLES: int = 4
     CORRELATION_SUMMARY_MAX_GROUPS: int = 25
 
+    # Column relevance filter (Agent 2.5)
+    RELEVANCE_UPPER: float = 0.6
+    RELEVANCE_LOWER: float = 0.25
+    RELEVANCE_MIN_COLUMNS: int = 5
+
 
 # Global settings instance
 settings = Settings()
