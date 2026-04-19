@@ -44,8 +44,20 @@ class GenericArchetype(BaseArchetype):
             for section in page.sections:
                 if not section.table:
                     continue
+                # Resolve semantic table names to actual Grist table names
+                table_name = section.table
+                # Direct lookup in table_mapping (role → actual name)
+                if table_name in classification.table_mapping:
+                    table_name = classification.table_mapping[table_name]
+                else:
+                    # Case-insensitive fallback for variations like "employees" vs "Employees"
+                    lower = table_name.lower().strip()
+                    for role, actual in classification.table_mapping.items():
+                        if role.lower() == lower:
+                            table_name = actual
+                            break
                 try:
-                    table_ref = resolver.get_ref(section.table)
+                    table_ref = resolver.get_ref(table_name)
                 except KeyError:
                     logger.warning(
                         "Table '%s' not in doc — skipping section '%s'",
@@ -57,6 +69,8 @@ class GenericArchetype(BaseArchetype):
                         self._add_chart_section(
                             api, doc_id, view_id, table_ref,
                             section.chart_type, section.title or "",
+                            x_col=section.x,
+                            y_col=section.y,
                         )
                     else:
                         helper = WIDGET_TO_HELPER.get(section.widget)

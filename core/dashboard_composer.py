@@ -54,11 +54,8 @@ class PageSection(BaseModel):
 
     @model_validator(mode="after")
     def validate_chart_fields(self):
-        if self.widget == "chart":
-            if not all([self.chart_type, self.table, self.x]):
-                raise ValueError("chart widgets require chart_type, table, and x fields")
-            if self.y is None and self.agg is None:
-                raise ValueError("chart widgets require at least y or agg field")
+        if self.widget == "chart" and not self.chart_type:
+            raise ValueError("chart widgets require chart_type field")
         return self
 
 
@@ -133,8 +130,19 @@ class DashboardComposer:
             {"role": "user", "content": prompt},
         ]
 
-        raw_plan = DashboardPlan(**self._call_llm(messages))
-        return raw_plan.self_reflect(insights)
+        raw_data = self._call_llm(messages)
+        # Filter out invalid chart sections before Pydantic validation
+        pages_data = raw_data.get("pages", [])
+        for page in pages_data:
+            valid_sections = []
+            for section in page.get("sections", []):
+                if section.get("widget") == "chart":
+                    if not section.get("chart_type"):
+                        continue
+                valid_sections.append(section)
+            page["sections"] = valid_sections
+        raw_data["pages"] = pages_data
+        return DashboardPlan(**raw_data)
 
     def _build_prompt(
         self,

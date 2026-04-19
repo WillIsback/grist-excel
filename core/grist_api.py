@@ -192,9 +192,12 @@ class GristAPI:
             raise GristConnectionError(
                 "Aucun workspace trouvé dans l'org"
             )
-        # Le premier workspace est généralement "Home"
-        self._workspace_id = workspaces[0].id
-        self._workspace_name = workspaces[0].name
+        # Prefer "Home" workspace; fall back to first non-support workspace
+        user_ws = [w for w in workspaces if not w.is_support]
+        home_ws = next((w for w in user_ws if w.name == "Home"), None)
+        chosen = home_ws or (user_ws[0] if user_ws else workspaces[0])
+        self._workspace_id = chosen.id
+        self._workspace_name = chosen.name
         return self._workspace_id
 
     def _doc_url(self, doc_id: str, path: str = "") -> str:
@@ -435,18 +438,18 @@ class GristAPI:
 
     GRIST_TYPE_MAP: Dict[str, str] = {
         # aliases → canonical Grist API types
-        "Int": "Integer",
+        "Integer": "Int",
+        "Int": "Int",
         "Float": "Numeric",
-        "Bool": "Toggle",
-        "Ref": "Reference",
-        "Reference List": "RefList",
-        # pass-through (already correct)
-        "Integer": "Integer",
         "Numeric": "Numeric",
+        "Bool": "Toggle",
         "Toggle": "Toggle",
+        "Ref": "Reference",
+        "Reference": "Reference",
+        "Reference List": "RefList",
+        "RefList": "RefList",
         "Choice": "Choice",
         "ChoiceList": "ChoiceList",
-        "Reference": "Reference",
         "Attachment": "Attachment",
         "DateTime": "DateTime",
         "Date": "Date",
@@ -569,6 +572,17 @@ class GristAPI:
     # ------------------------------------------------------------------
     # Tables
     # ------------------------------------------------------------------
+
+    def delete_table(self, doc_id: str, table_id: str) -> None:
+        """Delete a table from a Grist document via internal action.
+
+        Uses apply_actions with RemoveTable — the only supported deletion path.
+        Silent no-op if table does not exist.
+        """
+        try:
+            self.apply_actions(doc_id, [["RemoveTable", table_id]])
+        except GristAPIError:
+            pass
 
     def create_table(self, doc_id: str, table_id: str, columns: Optional[List[Dict[str, Any]]] = None) -> None:
         """Créer une table dans un document Grist.
