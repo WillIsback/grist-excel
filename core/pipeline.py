@@ -26,6 +26,8 @@ from core.dashboard_composer import DashboardComposer, DashboardPlan
 from core.feature_engineer import FeatureEngineer, FeaturePlan
 from core.reflexion import ReflexionValidator
 from core.visual_intents import VisualIntentPlan, VisualIntentResolver
+from core.checkpoint import CheckpointHandler, ClassificationFeedback, InsightFeedback
+from core.column_relevance_filter import ColumnRelevanceFilter
 from core.debug_utils import debug_print
 from config import Settings
 
@@ -76,7 +78,7 @@ class PipelineResult:
 class PipelineOrchestrator:
     """Orchestrates the full data-to-dashboard pipeline."""
 
-    def __init__(self, settings: Settings | None = None):
+    def __init__(self, settings: Settings | None = None, checkpoint_handler: "CheckpointHandler | None" = None):
         self.settings = settings or Settings()
         self.debug = self.settings.DEBUG
         self.data_analyzer = DataAnalyzer(settings)
@@ -85,16 +87,10 @@ class PipelineOrchestrator:
         self.composer = DashboardComposer(settings)
         self.feature_engineer = FeatureEngineer(settings)
         self.visual_intent_resolver = VisualIntentResolver()
+        self.checkpoint_handler = checkpoint_handler
+        self.relevance_filter = ColumnRelevanceFilter(settings)
 
     def run(self, profile: DataProfile) -> PipelineResult:
-        """Run the full pipeline on a DataProfile.
-
-        Args:
-            profile: DataProfile from Agent 1
-
-        Returns:
-            PipelineResult with all stages
-        """
         result = PipelineResult()
         result.profile = profile
         debug_print("Agent 1 — DataAnalyzer", profile, self.debug)
@@ -105,18 +101,69 @@ class PipelineOrchestrator:
         except Exception as e:
             result.errors.append(f"DomainClassifier failed: {e}")
 
+        # Checkpoint 1: classification confirmation + user intent
+        user_intent: str = ""
+        if self.checkpoint_handler and result.classification is not None:
+            try:
+                feedback = self.checkpoint_handler.on_classification(result.classification, profile)
+                if feedback.confirmed_archetype != result.classification.archetype:
+                    result.classification = ClassificationResult(
+                        archetype=feedback.confirmed_archetype,
+                        confidence=result.classification.confidence,
+                        table_mapping=result.classification.table_mapping,
+                        params=result.classification.params,
+                    )
+                user_intent = feedback.user_intent
+            except Exception as e:
+                result.errors.append(f"Checkpoint 1 failed: {e}")
+
+        # Agent 2.5: column relevance filter (only when intent provided)
+        active_profile = profile
+        if user_intent and result.classification is not None:
+            try:
+                active_profile = self.relevance_filter.filter(profile, user_intent)
+                debug_print("Agent 2.5 — ColumnRelevanceFilter", active_profile, self.debug)
+            except Exception as e:
+                result.errors.append(f"ColumnRelevanceFilter failed: {e}")
+
         if result.classification is not None:
             try:
-                result.insights = self._extract(profile, result.classification)
+                result.insights = self._extract(
+                    active_profile, result.classification,
+                    user_intent=user_intent or None,
+                )
                 debug_print("Agent 3 — InsightExtractor", result.insights, self.debug)
             except Exception as e:
                 result.errors.append(f"InsightExtractor failed: {e}")
+
+        # Checkpoint 2: insight selection
+        if self.checkpoint_handler and result.insights is not None:
+            try:
+                feedback2 = self.checkpoint_handler.on_insights(result.insights, profile)
+                if feedback2.selected_indices is not None:
+                    all_insights = result.insights.insights
+                    selected = [
+                        all_insights[i]
+                        for i in feedback2.selected_indices
+                        if i < len(all_insights)
+                    ]
+                    if selected:
+                        result.insights = InsightReport(insights=selected)
+                if feedback2.custom_focus:
+                    user_intent = (
+                        f"{user_intent} {feedback2.custom_focus}".strip()
+                        if user_intent
+                        else feedback2.custom_focus
+                    )
+            except Exception as e:
+                result.errors.append(f"Checkpoint 2 failed: {e}")
 
         # Agent 3.5: Feature Engineering
         if result.classification is not None and result.insights is not None:
             try:
                 result.feature_plan = self.feature_engineer.plan(
-                    profile, result.classification, result.insights
+                    profile, result.classification, result.insights,
+                    user_intent=user_intent or None,
                 )
                 debug_print("Agent 3.5 — FeatureEngineer", result.feature_plan, self.debug)
             except Exception as e:
@@ -126,9 +173,7 @@ class PipelineOrchestrator:
         if result.classification is not None and result.insights is not None:
             try:
                 result.visual_intents = self._resolve_visual_intents(
-                    profile,
-                    result.classification,
-                    result.insights,
+                    profile, result.classification, result.insights,
                 )
                 debug_print("VisualIntentResolver", result.visual_intents, self.debug)
             except Exception as e:
@@ -141,6 +186,7 @@ class PipelineOrchestrator:
                     raw_cols=profile.columns, stats=profile.stats,
                     summary_tables=profile.summary_tables,
                     visual_intents=result.visual_intents,
+                    user_intent=user_intent or None,
                 )
                 debug_print("Agent 4 — DashboardComposer", result.dashboard_plan, self.debug)
             except Exception as e:
@@ -195,9 +241,10 @@ class PipelineOrchestrator:
         self,
         profile: DataProfile,
         classification: ClassificationResult,
+        user_intent: str | None = None,
     ) -> InsightReport:
         """Run Agent 3: Insight Extraction."""
-        return self.insight_extractor.extract(profile, classification)
+        return self.insight_extractor.extract(profile, classification, user_intent=user_intent)
 
     def _compose(
         self,
@@ -208,12 +255,14 @@ class PipelineOrchestrator:
         stats: dict | None = None,
         summary_tables: list[dict[str, Any]] | None = None,
         visual_intents: VisualIntentPlan | None = None,
+        user_intent: str | None = None,
     ) -> DashboardPlan:
         """Run Agent 4: Dashboard Composition."""
         return self.composer.compose(classification, insights, feature_plan,
                                      raw_cols=raw_cols, stats=stats,
                                      summary_tables=summary_tables,
-                                     visual_intents=visual_intents)
+                                     visual_intents=visual_intents,
+                                     user_intent=user_intent)
 
     def _resolve_visual_intents(
         self,

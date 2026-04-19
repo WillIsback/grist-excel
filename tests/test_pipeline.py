@@ -89,7 +89,7 @@ class TestPipelineOrchestrator:
             classifiers["called"] = True
             return result
 
-        def mock_extract(profile, classification):
+        def mock_extract(profile, classification, user_intent=None):
             from core.insight_extractor import InsightReport, InsightEntry
             report = InsightReport(insights=[
                 InsightEntry(type="distribution", table="Employes", col="Departement",
@@ -169,7 +169,7 @@ class TestPipelineOrchestrator:
     def test_error_handling_continues_pipeline(self, mock_agents, monkeypatch):
         mock_classify, _, mock_compose, _, _, _ = mock_agents
 
-        def failing_extract(profile, classification):
+        def failing_extract(profile, classification, user_intent=None):
             raise RuntimeError("LLM timeout")
 
         orchestrator = PipelineOrchestrator()
@@ -219,3 +219,131 @@ class TestPipelineOrchestrator:
         output_dir = tmp_path / "output"
         result.save(str(output_dir))
         assert (output_dir / "pipeline_result.json").exists()
+
+
+class TestPipelineCheckpoints:
+    from unittest.mock import MagicMock
+
+    def _mock_classification(self):
+        from core.domain_classifier import ClassificationResult
+        return ClassificationResult(
+            archetype="HR", confidence=0.9,
+            table_mapping={"employees": "Employes"}, params={},
+        )
+
+    def _mock_insights(self):
+        from core.insight_extractor import InsightReport, InsightEntry
+        return InsightReport(insights=[
+            InsightEntry(type="distribution", table="Employes", col="Departement",
+                         finding="IT domine", priority=1),
+            InsightEntry(type="kpi", table="Employes", col="Salaire",
+                         finding="salaire élevé", priority=2),
+        ])
+
+    def test_no_handler_runs_without_checkpoint(self):
+        from unittest.mock import MagicMock, patch
+        orchestrator = PipelineOrchestrator()
+        profile = _mock_profile()
+        with patch.object(orchestrator, "_classify", return_value=self._mock_classification()), \
+             patch.object(orchestrator, "_extract", return_value=self._mock_insights()), \
+             patch.object(orchestrator.feature_engineer, "plan", return_value=MagicMock(features=[])), \
+             patch.object(orchestrator, "_compose", return_value=MagicMock(pages=[])), \
+             patch.object(orchestrator, "_resolve_visual_intents", return_value=MagicMock(intents=[])):
+            result = orchestrator.run(profile)
+        assert result.errors == []
+
+    def test_handler_called_after_classification(self):
+        from unittest.mock import MagicMock, patch
+        from core.checkpoint import ClassificationFeedback, InsightFeedback
+        handler = MagicMock()
+        handler.on_classification.return_value = ClassificationFeedback(
+            confirmed_archetype="HR", user_intent=""
+        )
+        handler.on_insights.return_value = InsightFeedback(selected_indices=[0, 1])
+
+        orchestrator = PipelineOrchestrator(checkpoint_handler=handler)
+        profile = _mock_profile()
+
+        with patch.object(orchestrator, "_classify", return_value=self._mock_classification()), \
+             patch.object(orchestrator, "_extract", return_value=self._mock_insights()), \
+             patch.object(orchestrator.feature_engineer, "plan", return_value=MagicMock(features=[])), \
+             patch.object(orchestrator, "_compose", return_value=MagicMock(pages=[])), \
+             patch.object(orchestrator, "_resolve_visual_intents", return_value=MagicMock(intents=[])):
+            orchestrator.run(profile)
+
+        handler.on_classification.assert_called_once()
+        handler.on_insights.assert_called_once()
+
+    def test_archetype_override_applied(self):
+        from unittest.mock import MagicMock, patch
+        from core.checkpoint import ClassificationFeedback, InsightFeedback
+        handler = MagicMock()
+        handler.on_classification.return_value = ClassificationFeedback(
+            confirmed_archetype="DECISIONNEL", user_intent=""
+        )
+        handler.on_insights.return_value = InsightFeedback(selected_indices=[0])
+
+        orchestrator = PipelineOrchestrator(checkpoint_handler=handler)
+        profile = _mock_profile()
+
+        with patch.object(orchestrator, "_classify", return_value=self._mock_classification()), \
+             patch.object(orchestrator, "_extract", return_value=self._mock_insights()), \
+             patch.object(orchestrator.feature_engineer, "plan", return_value=MagicMock(features=[])), \
+             patch.object(orchestrator, "_compose", return_value=MagicMock(pages=[])), \
+             patch.object(orchestrator, "_resolve_visual_intents", return_value=MagicMock(intents=[])):
+            result = orchestrator.run(profile)
+
+        assert result.classification.archetype == "DECISIONNEL"
+
+    def test_insight_selection_filters_report(self):
+        from unittest.mock import MagicMock, patch
+        from core.checkpoint import ClassificationFeedback, InsightFeedback
+        handler = MagicMock()
+        handler.on_classification.return_value = ClassificationFeedback(
+            confirmed_archetype="HR", user_intent=""
+        )
+        handler.on_insights.return_value = InsightFeedback(selected_indices=[1])  # only index 1
+
+        orchestrator = PipelineOrchestrator(checkpoint_handler=handler)
+        profile = _mock_profile()
+        captured_insights = []
+
+        def fake_plan(p, c, insights, user_intent=None):
+            captured_insights.append(insights)
+            return MagicMock(features=[])
+
+        with patch.object(orchestrator, "_classify", return_value=self._mock_classification()), \
+             patch.object(orchestrator, "_extract", return_value=self._mock_insights()), \
+             patch.object(orchestrator.feature_engineer, "plan", side_effect=fake_plan), \
+             patch.object(orchestrator, "_compose", return_value=MagicMock(pages=[])), \
+             patch.object(orchestrator, "_resolve_visual_intents", return_value=MagicMock(intents=[])):
+            orchestrator.run(profile)
+
+        assert len(captured_insights[0].insights) == 1
+        assert captured_insights[0].insights[0].col == "Salaire"  # index 1
+
+    def test_user_intent_passed_to_extract(self):
+        from unittest.mock import MagicMock, patch
+        from core.checkpoint import ClassificationFeedback, InsightFeedback
+        handler = MagicMock()
+        handler.on_classification.return_value = ClassificationFeedback(
+            confirmed_archetype="HR", user_intent="analyser le turnover"
+        )
+        handler.on_insights.return_value = InsightFeedback(selected_indices=[0])
+
+        orchestrator = PipelineOrchestrator(checkpoint_handler=handler)
+        profile = _mock_profile()
+        captured_kwargs = {}
+
+        def fake_extract(p, c, user_intent=None):
+            captured_kwargs["user_intent"] = user_intent
+            return self._mock_insights()
+
+        with patch.object(orchestrator, "_classify", return_value=self._mock_classification()), \
+             patch.object(orchestrator, "_extract", side_effect=fake_extract), \
+             patch.object(orchestrator.feature_engineer, "plan", return_value=MagicMock(features=[])), \
+             patch.object(orchestrator, "_compose", return_value=MagicMock(pages=[])), \
+             patch.object(orchestrator, "_resolve_visual_intents", return_value=MagicMock(intents=[])):
+            orchestrator.run(profile)
+
+        assert captured_kwargs["user_intent"] == "analyser le turnover"
