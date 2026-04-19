@@ -11,8 +11,11 @@ import json
 import logging
 import re
 import requests
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from pydantic import BaseModel, Field, field_validator, model_validator
+
+if TYPE_CHECKING:
+    from core.feature_engineer import FeaturePlan
 
 logger = logging.getLogger(__name__)
 
