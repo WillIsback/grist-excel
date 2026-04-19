@@ -131,6 +131,38 @@ def test_apply_skips_on_api_error():
     assert "bad_col" in failed
 
 
+def test_plan_injects_user_intent_into_prompt():
+    eng = FeatureEngineer()
+    captured = []
+
+    def fake_call_llm(messages, schema=None, _retry=False):
+        captured.extend(messages)
+        return {"features": []}
+
+    with patch.object(eng, "_call_llm", side_effect=fake_call_llm):
+        eng.plan(_make_profile(), _make_classification(), _make_insights(),
+                 user_intent="réduire le turnover")
+
+    user_msg = captured[1]["content"]
+    assert "réduire le turnover" in user_msg
+
+
+def test_plan_without_intent_unchanged():
+    eng = FeatureEngineer()
+    captured = []
+
+    def fake_call_llm(messages, schema=None, _retry=False):
+        captured.extend(messages)
+        return {"features": []}
+
+    with patch.object(eng, "_call_llm", side_effect=fake_call_llm):
+        eng.plan(_make_profile(), _make_classification(), _make_insights(),
+                 user_intent=None)
+
+    user_msg = captured[1]["content"]
+    assert "Objectif" not in user_msg
+
+
 def test_apply_emits_debug_payload():
     from core.grist_api import GristAPI
 

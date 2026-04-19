@@ -81,8 +81,14 @@ class FeatureEngineer:
         profile: DataProfile,
         classification: ClassificationResult,
         insights: InsightReport,
+        user_intent: str | None = None,
     ) -> FeaturePlan:
         prompt = self._build_prompt(profile, classification, insights)
+        if user_intent:
+            prompt += (
+                f"\n\nObjectif utilisateur : {user_intent}\n"
+                "Prioriser les colonnes dérivées qui aident à répondre à cette question."
+            )
         messages = [
             {
                 "role": "system",
