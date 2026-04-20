@@ -3,12 +3,14 @@
 ## 1. Principes Fondamentaux
 
 ### 1.1 Pipeline Multi-Agents Déterministe
+
 Le système suit un pipeline séquentiel en 6 agents, où chaque
 étape produit un artefact structuré consommé par le suivant.
 Chaque agent est isolé, testable indépendamment, et peut
 échouer sans faire tomber le pipeline (erreurs accumulées).
 
 ### 1.2 Séparation stricte LLM / Règles
+
 - **LLM** (vLLM local, Qwen3.6-35B): classification, insights,
   dashboard plan, features — tout ce qui nécessite du raisonnement
 - **Règles déterministes**: visual intents, validation Reflexion,
@@ -16,22 +18,26 @@ Chaque agent est isolé, testable indépendamment, et peut
   vérifié statiquement
 
 ### 1.3 Guided JSON Schema
+
 Tous les appels LLM utilisent `guided_json` avec des schémas
 Pydantic stricts. Température fixée à 0.2-0.3. Retry automatique
 en cas de JSON invalide (prompt plus strict).
 
 ### 1.4 Archétypes Extensibles
+
 Le système supporte 7 archétypes métier (HR, DECISIONNEL,
 SUPPORT, STUDENT, SI, PROJECT, GENERIC). Chacun implémente
 l'interface `BaseArchetype`. Nouveau archétype = nouveau fichier
 dans `archetypes/`.
 
 ### 1.5 Widgets Officiels Grist en Premium
+
 Advanced Charts, Map, Markdown sont matérialisés via
 sections custom avec `options.customView` sérialisé en JSON.
 La sélection se fait via `VisualIntentResolver` (règles, pas LLM).
 
 ### 1.6 Zéro Cloud
+
 Tout tourne localement: vLLM, Grist, Python. Aucune API externe
 d'inférence requise.
 
@@ -215,18 +221,21 @@ grist-excel/
 **Sortie:** `DataProfile` (dataclass)
 
 **Fonctions:**
+
 - `markitdown`: conversion Excel -> Markdown pour LLM
 - `pandas`: stats par colonne (null, unique, min/max/avg ou top values)
 - Heuristique FK: `ID_X` -> cherche sheet X, colonnes communes
 - Summary Tables: scoring cat x numeric pairs, top 4 retenus
 
 **Scoring summary tables:**
+
 ```
 score = coverage*10 + group_balance + metric_keywords +
         category_keywords + group_count_bonus
 ```
 
 **Méthodes:**
+
 - `DataProfile.as_prompt_context()` -> texte pour injection prompt
 - `DataProfile.to_json()` -> JSON pour guided_json
 
@@ -238,6 +247,7 @@ score = coverage*10 + group_balance + metric_keywords +
 **Sortie:** `ClassificationResult` (Pydantic)
 
 **Schéma JSON guidé:**
+
 - `archetype`: HR | DECISIONNEL | SUPPORT | STUDENT | SI | PROJECT | GENERIC
 - `confidence`: 0.0-1.0
 - `table_mapping`: `{role_semantique: nom_feuille_exact}`
@@ -266,6 +276,7 @@ angles d'analyse attendus
 **Sortie:** `FeaturePlan` (Pydantic)
 
 **Deux phases:**
+
 1. `plan()`: LLM génère `FormulaColumn[]` (max 6)
    Chaque formula utilise syntaxe Grist Python (`$ColName`,
    `Table.lookupRecords()`, `TODAY()`, etc.)
@@ -280,6 +291,7 @@ angles d'analyse attendus
 **Sortie:** `VisualIntentPlan` (Pydantic)
 
 **5 types d'intents:**
+
 1. **cross_tab**: depuis summary_tables, score basé sur insights matching
 2. **trend**: depuis insights de type "trend"
 3. **geo**: détection colonnes lat/lon par keywords + stats
@@ -287,6 +299,7 @@ angles d'analyse attendus
 5. **entity_detail**: table principale -> card_list
 
 **Scoring promotion premium:**
+
 ```
 score = priority*0.7 + confidence*0.3 + kind_bonus + presentation_bonus
 
@@ -302,12 +315,14 @@ presentation_bonus: hero_chart=0.10, secondary=0.05, summary_page=0.04, geo_page
 **Sortie:** `DashboardPlan` (Pydantic)
 
 **Pages générées:**
+
 1. Dashboard principal (charts basés sur insights)
 2. Page cards (table principale)
 3. Page form (table principale)
-4. + "Syntheses croisees" (append cross_tabs ou summary_tables)
+4. - "Syntheses croisees" (append cross_tabs ou summary_tables)
 
 **Règles de validation inline:**
+
 - chart sans `chart_type` -> drop
 - line chart sans `x`+`y` -> drop
 - `self_reflect()`: drop widgets non justifiés par insights
@@ -323,11 +338,13 @@ insights, features, summary tables, visual intents, retry context
 **Sortie:** `DashboardPlan` validé
 
 **Validation déterministe:**
+
 - `_normalize()`: NFKD -> ASCII -> lowercase
 - Vérifie chaque col x/y existe dans raw+engineered
 - Drop sections invalides, pages vides supprimées
 
 **Retry strategy:**
+
 - Si `drop_ratio <= 50%` -> retour cleaned
 - Si `drop_ratio > 50%` -> retry LLM une fois avec:
   `dropped_sections` + `available_columns`
@@ -339,6 +356,7 @@ insights, features, summary tables, visual intents, retry context
 **Dispatcher** vers l'archétype correct.
 
 **BaseArchetype fournit des helpers communs:**
+
 - `_create_page()`: AddRecord sur `_grist_Views` + TabBar + Pages
 - `_get_col_ref_map()`: `{colId: colRef}` pour une table
 - `_add_table_section()`: grid section
@@ -353,6 +371,7 @@ insights, features, summary tables, visual intents, retry context
 **GristTableResolver:** tableId -> tableRef (accent-insensitive)
 
 **Widgets officiels:**
+
 | Widget | ID |
 |--------|-----|
 | advanced_chart | `@gristlabs/widget-chart` |
@@ -365,6 +384,7 @@ insights, features, summary tables, visual intents, retry context
 ### 4.9 GristAPI
 
 Client REST complet avec:
+
 - Découverte auto org/workspace
 - Retry exponentiel (3 tentatives)
 - CRUD: docs, tables, columns, records
@@ -372,6 +392,7 @@ Client REST complet avec:
 - Widget discovery: `GET /api/widgets`, cache
 
 **Routes utilisées:**
+
 ```
 POST /api/docs                          (upload Excel ou doc vide)
 POST /api/docs/{id}/tables              (créer table)
@@ -387,6 +408,7 @@ GET  /api/widgets                       (découvrir widgets)
 ### 4.10 GristImporter
 
 Import Excel -> Grist:
+
 1. Crée doc vide -> supprime `Table1` auto-créé
 2. Pour chaque sheet: `_safe_table_id` + `_safe_col_id`
    (normalisation accents -> ASCII)
