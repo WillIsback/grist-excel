@@ -1,3 +1,98 @@
 <!DOCTYPE html>
-<html lang="fr"><head><meta charset="UTF-8"><title>grist-excel</title></head>
-<body><h1>Run</h1></body></html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>grist-excel — Analyse en cours</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="card">
+
+    <!-- Stepper (shared across all screens on this page) -->
+    <nav class="stepper" id="stepper">
+      <div class="step active" id="step-0">
+        <div class="step-dot">1</div>
+        <span class="step-label">Analyse</span>
+      </div>
+      <div class="step" id="step-1">
+        <div class="step-dot">2</div>
+        <span class="step-label">Classification</span>
+      </div>
+      <div class="step" id="step-2">
+        <div class="step-dot">3</div>
+        <span class="step-label">Archetype</span>
+      </div>
+      <div class="step" id="step-3">
+        <div class="step-dot">4</div>
+        <span class="step-label">Insights</span>
+      </div>
+      <div class="step" id="step-4">
+        <div class="step-dot">5</div>
+        <span class="step-label">Génération</span>
+      </div>
+    </nav>
+
+    <!-- Screen: Progress -->
+    <div class="screen hidden" data-screen="progress">
+      <div class="progress-wrap">
+        <div class="progress-bar" id="progress-bar"></div>
+      </div>
+      <p class="log-line" id="log-line">Initialisation…</p>
+    </div>
+
+    <!-- Screen: Checkpoint 1 — Archetype & Intent -->
+    <div class="screen hidden" data-screen="checkpoint1">
+      <p class="section-title">Archetype détecté</p>
+      <p id="cp1-confidence" class="mt-16" style="color:var(--gray-600);font-size:.85rem;margin-bottom:16px;"></p>
+
+      <form id="cp1-form">
+        <div class="label">Confirmer ou modifier l'archetype :</div>
+        <div class="radio-group" id="cp1-archetypes"></div>
+
+        <div class="label mt-16">Votre question ou objectif (optionnel) :</div>
+        <textarea id="cp1-intent" placeholder="Ex : Je veux comprendre les tendances d'absences par département…"></textarea>
+
+        <div class="btn-row">
+          <button type="submit" class="btn">Continuer l'analyse →</button>
+        </div>
+      </form>
+    </div>
+
+    <!-- Screen: Checkpoint 2 — Insight Selection -->
+    <div class="screen hidden" data-screen="checkpoint2">
+      <p class="section-title">Sélectionnez les insights à inclure</p>
+
+      <form id="cp2-form">
+        <ul class="insight-list" id="cp2-insights"></ul>
+
+        <div class="btn-row">
+          <button type="submit" class="btn">Générer le tableau de bord →</button>
+        </div>
+      </form>
+    </div>
+
+    <!-- Screen: Result -->
+    <div class="screen hidden" data-screen="result">
+      <div class="result-icon">✅</div>
+      <p class="result-title">Votre tableau de bord est prêt !</p>
+      <p class="result-sub">Le document Grist a été créé avec les pages suivantes :</p>
+      <div class="page-chips" id="page-chips"></div>
+      <div class="btn-row" style="justify-content:center">
+        <a id="result-link" class="btn" href="#" target="_blank" rel="noopener">Ouvrir dans Grist →</a>
+        <a href="/" class="btn btn-outline">Nouvelle analyse</a>
+      </div>
+    </div>
+
+    <!-- Screen: Error -->
+    <div class="screen hidden" data-screen="error">
+      <div class="error-banner" id="error-msg">Une erreur est survenue.</div>
+      <div class="btn-row">
+        <a href="/" class="btn btn-outline">Réessayer</a>
+      </div>
+    </div>
+
+  </div>
+  <script src="/static/app.js"></script>
+</body>
+</html>

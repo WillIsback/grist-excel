@@ -1,3 +1,32 @@
 <!DOCTYPE html>
-<html lang="fr"><head><meta charset="UTF-8"><title>grist-excel</title></head>
-<body><h1>Upload</h1></body></html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>grist-excel — Excel vers Grist</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="card">
+    <div class="screen" data-screen="upload">
+      <h1>grist-excel</h1>
+      <p class="tagline">Transformez votre Excel en tableau de bord Grist en quelques clics.</p>
+
+      <div class="drop-zone" id="drop-zone">
+        <div class="icon">📊</div>
+        <p>Glissez-déposez votre fichier <strong>.xlsx</strong> ici</p>
+        <p>ou <u>parcourez</u> vos fichiers</p>
+        <p class="filename" id="filename"></p>
+        <input type="file" id="file-input" accept=".xlsx" style="display:none">
+      </div>
+
+      <div class="btn-row">
+        <button class="btn" id="analyse-btn" disabled>
+          Analyser →
+        </button>
+      </div>
+    </div>
+  </div>
+  <script src="/static/app.js"></script>
+</body>
+</html>
