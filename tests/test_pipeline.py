@@ -6,6 +6,8 @@ from unittest.mock import MagicMock, patch
 from core.pipeline import PipelineOrchestrator, PipelineResult
 from core.data_analyzer import DataProfile
 from core.visual_intents import VisualIntentPlan
+from core.insight_extractor import InsightEntry, InsightReport
+from core.domain_classifier import ClassificationResult
 
 
 SAMPLE_XLSX_PATH = "samples/employees_rh.xlsx"
@@ -347,3 +349,85 @@ class TestPipelineCheckpoints:
             orchestrator.run(profile)
 
         assert captured_kwargs["user_intent"] == "analyser le turnover"
+
+
+# ---------------------------------------------------------------------------
+# Module-level helpers for run_from_insights tests
+# ---------------------------------------------------------------------------
+
+def _mock_classification_module():
+    return ClassificationResult(
+        archetype="HR",
+        confidence=0.9,
+        table_mapping={"employees": "Employes"},
+        params={"name_col": "Nom"},
+    )
+
+
+def _mock_insights_module():
+    return [
+        InsightEntry(
+            type="distribution",
+            table="Employes",
+            col="Departement",
+            finding="IT concentre 45%",
+            priority=1,
+        )
+    ]
+
+
+def test_run_from_insights_skips_analyzer_and_classifier():
+    """run_from_insights() must not call DataAnalyzer or DomainClassifier."""
+    with (
+        patch("core.pipeline.DataAnalyzer") as mock_analyzer,
+        patch("core.pipeline.DomainClassifier") as mock_classifier,
+        patch("core.pipeline.InsightExtractor"),
+        patch("core.pipeline.ColumnRelevanceFilter"),
+        patch("core.pipeline.FeatureEngineer"),
+        patch("core.pipeline.NarrativeGenerator"),
+        patch("core.pipeline.VisualIntentResolver"),
+        patch("core.pipeline.DashboardComposer"),
+        patch("core.pipeline.ReflexionValidator"),
+    ):
+        orchestrator = PipelineOrchestrator()
+        profile = _mock_profile()
+        classification = _mock_classification_module()
+        insights = _mock_insights_module()
+
+        result = orchestrator.run_from_insights(
+            cached_profile=profile,
+            cached_classification=classification,
+            selected_insights=insights,
+            intent="test intent",
+        )
+
+        mock_analyzer.return_value.analyze.assert_not_called()
+        mock_classifier.return_value.classify.assert_not_called()
+        assert result.profile is profile
+        assert result.classification is classification
+
+
+def test_run_from_insights_returns_pipeline_result():
+    orchestrator = PipelineOrchestrator()
+    orchestrator.relevance_filter = MagicMock()
+    orchestrator.relevance_filter.filter.return_value = _mock_profile()
+    orchestrator.insight_extractor = MagicMock()
+    orchestrator.feature_engineer = MagicMock()
+    orchestrator.feature_engineer.plan.return_value = MagicMock(features=[])
+    orchestrator.narrative_generator = MagicMock()
+    orchestrator.narrative_generator.generate.return_value = "summary"
+    orchestrator.visual_intent_resolver = MagicMock()
+    orchestrator.visual_intent_resolver.resolve.return_value = MagicMock(intents=[])
+    orchestrator.composer = MagicMock()
+    orchestrator.composer.compose.return_value = MagicMock(pages=[])
+
+    result = orchestrator.run_from_insights(
+        cached_profile=_mock_profile(),
+        cached_classification=_mock_classification_module(),
+        selected_insights=_mock_insights_module(),
+        intent="turnover",
+    )
+
+    assert isinstance(result, PipelineResult)
+    # InsightExtractor must not have been called
+    orchestrator.insight_extractor.extract.assert_not_called()

@@ -237,6 +237,101 @@ class PipelineOrchestrator:
 
         return result
 
+    def run_from_insights(
+        self,
+        cached_profile: DataProfile,
+        cached_classification: ClassificationResult,
+        selected_insights: list,  # list[InsightEntry]
+        intent: str = "",
+    ) -> PipelineResult:
+        """Phase 2 entry point for refinement runs.
+
+        Skips DataAnalyzer, DomainClassifier, and InsightExtractor.
+        Uses caller-provided insights (user-approved subset from previous run).
+        Re-runs ColumnRelevanceFilter with new intent so column filtering adapts.
+        """
+        result = PipelineResult()
+        result.profile = cached_profile
+        result.classification = cached_classification
+        result.insights = InsightReport(insights=selected_insights)
+
+        active_profile = cached_profile
+        if intent and cached_classification is not None:
+            try:
+                active_profile = self.relevance_filter.filter(cached_profile, intent)
+                debug_print("Refinement — ColumnRelevanceFilter", active_profile, self.debug)
+            except Exception as e:
+                result.errors.append(f"ColumnRelevanceFilter failed: {e}")
+
+        if cached_classification is not None and result.insights is not None:
+            try:
+                result.feature_plan = self.feature_engineer.plan(
+                    active_profile, cached_classification, result.insights,
+                    user_intent=intent or None,
+                )
+                debug_print("Refinement — FeatureEngineer", result.feature_plan, self.debug)
+            except Exception as e:
+                result.errors.append(f"FeatureEngineer failed: {e}")
+                result.feature_plan = FeaturePlan(features=[])
+
+        if cached_classification is not None and result.insights is not None:
+            try:
+                result.narrative = self.narrative_generator.generate(
+                    active_profile, cached_classification, result.insights,
+                    feature_plan=result.feature_plan,
+                    user_intent=intent or None,
+                )
+            except Exception as e:
+                result.errors.append(f"NarrativeGenerator failed: {e}")
+
+        if cached_classification is not None and result.insights is not None:
+            try:
+                result.visual_intents = self._resolve_visual_intents(
+                    active_profile, cached_classification, result.insights,
+                    narrative=result.narrative,
+                )
+            except Exception as e:
+                result.errors.append(f"VisualIntentResolver failed: {e}")
+
+        if cached_classification is not None and result.insights is not None:
+            try:
+                result.dashboard_plan = self._compose(
+                    cached_classification, result.insights, result.feature_plan,
+                    raw_cols=active_profile.columns, stats=active_profile.stats,
+                    summary_tables=active_profile.summary_tables,
+                    visual_intents=result.visual_intents,
+                    user_intent=intent or None,
+                )
+            except Exception as e:
+                result.errors.append(f"DashboardComposer failed: {e}")
+
+        if result.dashboard_plan is not None and cached_classification is not None:
+            try:
+                raw_cols = active_profile.columns
+                engineered_cols: dict[str, list[str]] = {}
+                if result.feature_plan:
+                    for f in result.feature_plan.features:
+                        table_id = cached_classification.table_mapping.get(f.table, f.table)
+                        engineered_cols.setdefault(table_id, []).append(f.col_id)
+
+                validator = ReflexionValidator(
+                    raw_cols=raw_cols,
+                    engineered_cols=engineered_cols,
+                    table_mapping=cached_classification.table_mapping,
+                    summary_tables=active_profile.summary_tables,
+                    visual_intents=result.visual_intents,
+                )
+                result.dashboard_plan = validator.validate(
+                    result.dashboard_plan,
+                    cached_classification,
+                    result.insights,
+                    self.composer,
+                )
+            except Exception as e:
+                result.errors.append(f"ReflexionValidator failed: {e}")
+
+        return result
+
     def run_from_file(self, file_path: str) -> PipelineResult:
         """Run the full pipeline starting from an Excel file.
 
