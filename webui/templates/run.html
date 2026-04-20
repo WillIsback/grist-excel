@@ -76,19 +76,63 @@
     <div class="screen hidden" data-screen="result">
       <div class="result-icon">✅</div>
       <p class="result-title">Votre tableau de bord est prêt !</p>
-      <p class="result-sub">Le document Grist a été créé avec les pages suivantes :</p>
-      <div class="page-chips" id="page-chips"></div>
-      <div class="btn-row" style="justify-content:center">
+
+      <div class="result-section">
+        <p class="result-section-label">Résumé</p>
+        <p class="result-meta">
+          Archetype : <strong id="result-archetype"></strong>
+          &nbsp;·&nbsp;
+          Confiance : <strong id="result-confidence"></strong>
+        </p>
+        <p class="result-meta" id="result-intent-wrap" style="display:none">
+          Intention analysée : <em id="result-intent"></em>
+        </p>
+        <div class="page-chips" id="page-chips"></div>
+      </div>
+
+      <div class="result-section" id="result-insights-section" style="display:none">
+        <p class="result-section-label">Insights utilisés</p>
+        <ul class="insight-list" id="result-insights"></ul>
+      </div>
+
+      <div class="result-section">
+        <p class="result-section-label">Qualité</p>
+        <p class="result-quality" id="result-features-ok"></p>
+        <p class="result-quality result-quality-warn" id="result-features-fail" style="display:none"></p>
+      </div>
+
+      <div class="btn-row" style="justify-content:center;flex-wrap:wrap;gap:12px;">
         <a id="result-link" class="btn" href="#" target="_blank" rel="noopener">Ouvrir dans Grist →</a>
+        <button id="affiner-btn" class="btn btn-outline">Affiner le tableau de bord</button>
         <a href="/" class="btn btn-outline">Nouvelle analyse</a>
       </div>
+    </div>
+
+    <!-- Screen: Refine — reuses checkpoint2 layout -->
+    <div class="screen hidden" data-screen="refine">
+      <p class="section-title">Affiner votre tableau de bord</p>
+
+      <form id="refine-form">
+        <div class="label">Votre question ou objectif :</div>
+        <textarea id="refine-intent" placeholder="Ex : Je veux comprendre les tendances d'absences par département…"></textarea>
+
+        <div class="label mt-16">Sélectionnez les insights à inclure :</div>
+        <ul class="insight-list" id="refine-insights"></ul>
+
+        <p class="refine-hint">Sélectionnez au moins un insight pour continuer.</p>
+
+        <div class="btn-row">
+          <button type="submit" class="btn" id="refine-submit" disabled>Régénérer →</button>
+          <button type="button" class="btn btn-outline" id="refine-cancel">Annuler</button>
+        </div>
+      </form>
     </div>
 
     <!-- Screen: Error -->
     <div class="screen hidden" data-screen="error">
       <div class="error-banner" id="error-msg">Une erreur est survenue.</div>
       <div class="btn-row">
-        <a href="/" class="btn btn-outline">Réessayer</a>
+        <button id="error-retry-btn" class="btn btn-outline">Réessayer</button>
       </div>
     </div>
 

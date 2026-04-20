@@ -78,6 +78,10 @@ function setLog(msg) {
 }
 
 function initRun() {
+  window._inRefinement = false;
+  window._lastRefineIntent = "";
+  window._lastRefineIndices = [];
+
   const params = new URLSearchParams(window.location.search);
   const sid = params.get("sid");
   if (!sid) { showScreen("error"); $("error-msg").textContent = "Session manquante."; return; }
@@ -118,8 +122,7 @@ function initRun() {
   es.addEventListener("error", e => {
     const d = JSON.parse(e.data || '{"message":"Erreur inconnue."}');
     es.close();
-    showScreen("error");
-    $("error-msg").textContent = d.message;
+    showError(d.message);
   });
 }
 
@@ -214,15 +217,29 @@ function resumeStream(cpEvent, cpHandler, doneEvent, doneHandler) {
   es.addEventListener("error", e => {
     const d = JSON.parse(e.data || '{"message":"Erreur inconnue."}');
     es.close();
-    showScreen("error");
-    $("error-msg").textContent = d.message;
+    showError(d.message);
   });
 }
 
 // ── Result screen ─────────────────────────────────────────────────────────────
 function showResult(data) {
   setStepperState(5);
+
   $("result-link").href = data.doc_url;
+
+  // Archetype + confidence
+  $("result-archetype").textContent = data.archetype || "—";
+  $("result-confidence").textContent = data.confidence
+    ? Math.round(data.confidence * 100) + " %"
+    : "—";
+
+  // Intent echo
+  if (data.intent_used) {
+    $("result-intent").textContent = `"${data.intent_used}"`;
+    $("result-intent-wrap").style.display = "";
+  }
+
+  // Pages
   const chips = $("page-chips");
   chips.innerHTML = "";
   (data.pages || []).forEach(p => {
@@ -231,7 +248,122 @@ function showResult(data) {
     span.textContent = p;
     chips.appendChild(span);
   });
+
+  // Insights used
+  const insightList = $("result-insights");
+  insightList.innerHTML = "";
+  if (data.insights_used && data.insights_used.length) {
+    $("result-insights-section").style.display = "";
+    data.insights_used.forEach(finding => {
+      const li = document.createElement("li");
+      li.className = "insight-item";
+      li.innerHTML = `<div>${finding}</div>`;
+      insightList.appendChild(li);
+    });
+  }
+
+  // Quality indicators
+  const applied = data.features_applied ?? 0;
+  const failed = data.features_failed ?? 0;
+  $("result-features-ok").textContent = `${applied} colonne${applied !== 1 ? "s" : ""} calculée${applied !== 1 ? "s" : ""} ajoutée${applied !== 1 ? "s" : ""}`;
+  if (failed > 0) {
+    $("result-features-fail").textContent = `${failed} colonne${failed !== 1 ? "s" : ""} échouée${failed !== 1 ? "s" : ""} (référence ambiguë)`;
+    $("result-features-fail").style.display = "";
+  }
+
+  // Store last complete data for refinement
+  window._lastResult = data;
+
   showScreen("result");
+
+  $("affiner-btn").onclick = () => loadRefineForm();
+}
+
+// ── Refinement flow ───────────────────────────────────────────────────────────
+async function loadRefineForm() {
+  const resp = await fetch(`/refine/${window._sid}`);
+  if (!resp.ok) { alert("Impossible de charger les données d'affinement."); return; }
+  const data = await resp.json();
+  showRefine(data);
+}
+
+function showRefine(data) {
+  $("refine-intent").value = data.intent || "";
+
+  const list = $("refine-insights");
+  list.innerHTML = "";
+  (data.insights || []).forEach(ins => {
+    const li = document.createElement("li");
+    li.className = "insight-item";
+    li.innerHTML = `
+      <input type="checkbox" name="refine-insight" value="${ins.index}" checked>
+      <div>
+        <div>${ins.finding}</div>
+        <div class="insight-meta">${ins.type} — ${ins.table}.${ins.col}</div>
+      </div>`;
+    list.appendChild(li);
+  });
+
+  updateRefineSubmit();
+  list.querySelectorAll('input[name="refine-insight"]').forEach(cb => {
+    cb.addEventListener("change", updateRefineSubmit);
+  });
+
+  showScreen("refine");
+
+  $("refine-cancel").onclick = () => showScreen("result");
+
+  $("refine-form").onsubmit = async e => {
+    e.preventDefault();
+    const selected = [...document.querySelectorAll('input[name="refine-insight"]:checked')]
+      .map(el => parseInt(el.value));
+    const intent = $("refine-intent").value;
+
+    // Store for Phase 2 error retry
+    window._inRefinement = true;
+    window._lastRefineIntent = intent;
+    window._lastRefineIndices = selected;
+
+    const form = new FormData();
+    form.append("intent", intent);
+    form.append("selected_indices", JSON.stringify(selected));
+    await fetch(`/refine/${window._sid}`, { method: "POST", body: form });
+
+    showScreen("progress");
+    setStepperState(3); // start at Insights step (refinement skips Analyse + Classification)
+    setLog("Affinage en cours…");
+    resumeStream(null, null, "complete", showResult);
+  };
+}
+
+function updateRefineSubmit() {
+  const any = document.querySelector('input[name="refine-insight"]:checked');
+  $("refine-submit").disabled = !any;
+}
+
+// ── Error screen — Phase 2 retry ──────────────────────────────────────────────
+window._inRefinement = false;
+
+function showError(msg) {
+  $("error-msg").textContent = msg;
+  const retryBtn = $("error-retry-btn");
+  if (window._inRefinement && window._sid) {
+    retryBtn.textContent = "Réessayer la génération";
+    retryBtn.onclick = async () => {
+      const form = new FormData();
+      form.append("intent", window._lastRefineIntent || "");
+      form.append("selected_indices", JSON.stringify(window._lastRefineIndices || []));
+      await fetch(`/refine/${window._sid}`, { method: "POST", body: form });
+      showScreen("progress");
+      setStepperState(3);
+      setLog("Affinement en cours…");
+      resumeStream(null, null, "complete", showResult);
+    };
+  } else {
+    retryBtn.textContent = "Réessayer";
+    retryBtn.onclick = () => { window.location.href = "/"; };
+  }
+  showScreen("error");
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────

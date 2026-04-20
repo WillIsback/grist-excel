@@ -205,3 +205,35 @@ textarea:focus { border-color: var(--green); }
 .hidden { display: none !important; }
 .mt-16 { margin-top: 16px; }
 .label { font-size: 0.85rem; font-weight: 500; color: var(--gray-600); margin-bottom: 6px; }
+
+/* Result screen quality card */
+.result-section {
+  margin: 20px 0;
+  padding: 16px;
+  background: #f3f4f6;
+  border-radius: 8px;
+}
+.result-section-label {
+  font-size: .75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--gray-600);
+  margin: 0 0 8px;
+}
+.result-meta {
+  font-size: .9rem;
+  color: var(--gray-600);
+  margin: 4px 0;
+}
+.result-quality {
+  font-size: .9rem;
+  margin: 4px 0;
+}
+.result-quality::before { content: "✓ "; color: #16a34a; }
+.result-quality-warn::before { content: "⚠ "; color: #d97706; }
+.refine-hint {
+  font-size: .8rem;
+  color: var(--gray-600);
+  margin: 8px 0 0;
+}
