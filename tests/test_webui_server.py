@@ -139,3 +139,80 @@ def test_complete_event_includes_quality_fields():
     assert d["features_applied"] == 3
     assert d["features_failed"] == 1
     assert d["archetype"] == "HR"
+
+
+def test_refine_get_unknown_session_returns_404(client):
+    resp = client.get("/refine/nonexistent-id")
+    assert resp.status_code == 404
+
+
+def test_refine_get_returns_cached_insights(client):
+    from core.insight_extractor import InsightEntry
+
+    sid = store.create()
+    session = store.get(sid)
+    session.cached_insights = [
+        InsightEntry(type="distribution", table="T", col="C", finding="f1", priority=1),
+    ]
+    session.checkpoint1_response = {"archetype": "HR", "user_intent": "turnover"}
+
+    resp = client.get(f"/refine/{sid}")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["intent"] == "turnover"
+    assert len(body["insights"]) == 1
+    assert body["insights"][0]["finding"] == "f1"
+
+
+def test_refine_get_returns_empty_when_no_cache(client):
+    sid = store.create()
+    resp = client.get(f"/refine/{sid}")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["insights"] == []
+    assert body["intent"] == ""
+
+
+def test_refine_post_unknown_session_returns_404(client):
+    resp = client.post(
+        "/refine/nonexistent-id",
+        data={"intent": "test", "selected_indices": "[0]"},
+    )
+    assert resp.status_code == 404
+
+
+def test_refine_post_starts_refinement_thread(client):
+    from core.insight_extractor import InsightEntry
+    from core.domain_classifier import ClassificationResult
+    from core.data_analyzer import DataProfile
+    from unittest.mock import patch, MagicMock
+
+    sid = store.create()
+    session = store.get(sid)
+    session.cached_insights = [
+        InsightEntry(type="distribution", table="T", col="C", finding="f1", priority=1),
+    ]
+    session.cached_profile = MagicMock(spec=DataProfile)
+    session.cached_classification = MagicMock(spec=ClassificationResult)
+
+    with patch("webui.server.start_refinement_thread") as mock_thread:
+        resp = client.post(
+            f"/refine/{sid}",
+            data={"intent": "turnover", "selected_indices": "[0]"},
+        )
+    assert resp.status_code == 200
+    mock_thread.assert_called_once()
+    call_kwargs = mock_thread.call_args
+    assert call_kwargs[0][1] == "turnover"  # intent
+    assert len(call_kwargs[0][2]) == 1       # selected_insights
+
+
+def test_refine_post_bad_indices_returns_400(client):
+    sid = store.create()
+    session = store.get(sid)
+    session.cached_insights = []
+    resp = client.post(
+        f"/refine/{sid}",
+        data={"intent": "x", "selected_indices": "not-json"},
+    )
+    assert resp.status_code == 400

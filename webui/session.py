@@ -5,7 +5,12 @@ import queue
 import threading
 import uuid
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from core.data_analyzer import DataProfile
+    from core.domain_classifier import ClassificationResult
+    from core.insight_extractor import InsightEntry
 
 
 @dataclass
@@ -17,6 +22,19 @@ class PipelineSession:
     checkpoint2_response: dict[str, Any] | None = None
     result: dict[str, Any] | None = None
     error: str | None = None
+
+    # Phase 1 cache — populated after DataAnalyzer + DomainClassifier
+    cached_profile: "DataProfile | None" = None
+    cached_classification: "ClassificationResult | None" = None
+    # Full InsightReport from last InsightExtractor run (before Checkpoint 2 filtering)
+    cached_insights: "list[InsightEntry] | None" = None
+
+    # Path to uploaded temp file — needed so refinement can re-import to Grist
+    cached_tmp_path: str | None = None
+
+    # Refinement — user re-submits intent + insight selection for Phase 2 re-run
+    refine_event: threading.Event = field(default_factory=threading.Event)
+    refine_response: dict[str, Any] | None = None  # {intent: str, selected_indices: list[int]}
 
 
 class SessionStore:

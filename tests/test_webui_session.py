@@ -33,3 +33,20 @@ def test_delete_session():
     sid = store.create()
     store.delete(sid)
     assert store.get(sid) is None
+
+
+def test_session_has_cache_fields():
+    store = SessionStore()
+    sid = store.create()
+    session = store.get(sid)
+    assert session.cached_profile is None
+    assert session.cached_classification is None
+    assert session.cached_insights is None
+
+
+def test_session_has_refine_event():
+    store = SessionStore()
+    sid = store.create()
+    session = store.get(sid)
+    assert isinstance(session.refine_event, threading.Event)
+    assert session.refine_response is None

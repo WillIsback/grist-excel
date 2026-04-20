@@ -11,7 +11,7 @@ from fastapi.templating import Jinja2Templates
 from fastapi.requests import Request
 
 from webui.session import SessionStore
-from webui.pipeline_runner import start_pipeline_thread
+from webui.pipeline_runner import start_pipeline_thread, start_refinement_thread
 
 BASE_DIR = Path(__file__).parent
 
@@ -96,3 +96,53 @@ async def result(sid: str):
     if not session.result:
         raise HTTPException(status_code=202, detail="Pipeline en cours.")
     return JSONResponse(session.result)
+
+
+@app.get("/refine/{sid}")
+async def refine_get(sid: str):
+    """Return cached insights + last intent for the refinement form."""
+    session = store.get(sid)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session inconnue.")
+
+    insights_data = []
+    if session.cached_insights:
+        insights_data = [
+            {
+                "index": i,
+                "type": ins.type,
+                "table": ins.table,
+                "col": ins.col,
+                "finding": ins.finding,
+            }
+            for i, ins in enumerate(session.cached_insights)
+        ]
+
+    intent = ""
+    if session.checkpoint1_response:
+        intent = session.checkpoint1_response.get("user_intent", "")
+
+    return JSONResponse({"insights": insights_data, "intent": intent})
+
+
+@app.post("/refine/{sid}")
+async def refine_post(sid: str, intent: str = Form(""), selected_indices: str = Form(...)):
+    """Start Phase 2 re-run with new intent + insight selection."""
+    session = store.get(sid)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session inconnue.")
+
+    try:
+        indices = json.loads(selected_indices)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="selected_indices doit être un JSON array.")
+
+    all_insights = session.cached_insights or []
+    selected = [all_insights[i] for i in indices if i < len(all_insights)]
+
+    # Reset session state for the new run
+    session.error = None
+    session.result = None
+
+    start_refinement_thread(session, intent, selected)
+    return JSONResponse({"status": "ok"})
