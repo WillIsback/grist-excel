@@ -124,7 +124,37 @@ Variables les plus utiles:
 
 ## Utilisation
 
-### Exécution complète
+### Interface Web (recommandée)
+
+L'interface web permet d'analyser un fichier Excel via navigateur, avec checkpoints interactifs et boucle d'affinement Phase 2.
+
+```bash
+# Prérequis : Grist doit tourner (start-grist.sh)
+./start-webui.sh
+```
+
+Ouvrir `http://localhost:8000` dans le navigateur.
+
+Variables d'environnement optionnelles :
+
+| Variable | Défaut | Description |
+|----------|--------|-------------|
+| `WEBUI_HOST` | `0.0.0.0` | Adresse d'écoute |
+| `WEBUI_PORT` | `8000` | Port HTTP |
+
+**Flux d'utilisation :**
+
+1. Déposer ou sélectionner un fichier `.xlsx`
+2. **Checkpoint 1** — Confirmer l'archétype détecté + saisir une intention (ex: *"analyser le turnover par département"*)
+3. **Checkpoint 2** — Sélectionner les insights à inclure dans le dashboard
+4. Le pipeline génère le document Grist et affiche l'écran de résultat avec :
+   - Archétype + score de confiance
+   - Intention analysée
+   - Insights utilisés
+   - Qualité (colonnes calculées appliquées / échouées)
+5. Cliquer **Affiner le tableau de bord** pour relancer la Phase 2 (ré-exécute depuis ColumnRelevanceFilter, sans ré-analyser le fichier) avec une nouvelle intention ou sélection d'insights différente.
+
+### Ligne de commande (CLI)
 
 ```bash
 uv run python main.py --input samples/employees_rh.xlsx
