@@ -110,3 +110,32 @@ def test_checkpoint2_caches_full_insight_list():
 
     assert session.cached_insights is not None
     assert len(session.cached_insights) == 2  # full list, not filtered
+
+
+def test_complete_event_includes_quality_fields():
+    """complete SSE event must include intent_used, features_applied, features_failed."""
+    import json as _json
+    from webui.session import SessionStore
+
+    store_local = SessionStore()
+    sid = store_local.create()
+    session = store_local.get(sid)
+
+    payload = {
+        "doc_url": "http://grist/doc/abc",
+        "pages": ["Dashboard"],
+        "intent_used": "turnover",
+        "insights_used": ["IT concentre 45%"],
+        "features_applied": 3,
+        "features_failed": 1,
+        "archetype": "HR",
+        "confidence": 0.91,
+    }
+    session.event_queue.put(("complete", _json.dumps(payload)))
+    event, data = session.event_queue.get_nowait()
+    d = _json.loads(data)
+
+    assert d["intent_used"] == "turnover"
+    assert d["features_applied"] == 3
+    assert d["features_failed"] == 1
+    assert d["archetype"] == "HR"
