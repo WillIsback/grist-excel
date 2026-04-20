@@ -25,12 +25,12 @@ MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MB
 
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
+    return templates.TemplateResponse(request, "index.html")
 
 
 @app.get("/run", response_class=HTMLResponse)
 async def run_page(request: Request):
-    return templates.TemplateResponse("run.html", {"request": request})
+    return templates.TemplateResponse(request, "run.html")
 
 
 @app.post("/upload")
