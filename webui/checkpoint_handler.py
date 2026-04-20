@@ -62,6 +62,9 @@ class WebCheckpointHandler:
         self._session.checkpoint2_event.wait()
         self._session.checkpoint2_event.clear()
 
+        # Cache full insight list for refinement (before user's selection filters it)
+        self._session.cached_insights = list(report.insights)
+
         resp = self._session.checkpoint2_response or {}
         selected = resp.get("selected_indices", list(range(len(report.insights))))
         return InsightFeedback(selected_indices=selected)

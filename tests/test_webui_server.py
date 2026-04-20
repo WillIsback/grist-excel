@@ -80,3 +80,33 @@ def test_result_returns_doc_url_when_complete(client):
     resp = client.get(f"/result/{sid}")
     assert resp.status_code == 200
     assert resp.json()["doc_url"] == "http://grist/doc/abc"
+
+
+def test_checkpoint2_caches_full_insight_list():
+    """After Checkpoint 2, session.cached_insights holds full InsightReport."""
+    from core.insight_extractor import InsightEntry, InsightReport
+    from webui.checkpoint_handler import WebCheckpointHandler
+    from webui.session import SessionStore
+    from unittest.mock import MagicMock
+
+    store_local = SessionStore()
+    sid = store_local.create()
+    session = store_local.get(sid)
+
+    handler = WebCheckpointHandler(session)
+
+    insights = [
+        InsightEntry(type="distribution", table="T", col="C", finding="f1", priority=1),
+        InsightEntry(type="outlier", table="T", col="D", finding="f2", priority=2),
+    ]
+    report = InsightReport(insights=insights)
+
+    # Pre-set the checkpoint2 response so on_insights() doesn't block
+    session.checkpoint2_response = {"selected_indices": [0]}
+    session.checkpoint2_event.set()
+
+    profile_mock = MagicMock()
+    handler.on_insights(report, profile_mock)
+
+    assert session.cached_insights is not None
+    assert len(session.cached_insights) == 2  # full list, not filtered
